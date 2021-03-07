@@ -2,30 +2,31 @@
 #![no_main]
 #![feature(asm)]
 #![feature(naked_functions)]
+#![feature(alloc_error_handler)]
+#![feature(maybe_uninit_extra)]
+
+extern crate alloc;
 
 // extern crate compiler_builtins;
 
 #[macro_use]
 mod io;
 
+mod allocator;
 mod env;
 mod start;
 mod syscalls;
 mod util;
 use env::Environment;
 
-use io::*;
-
-fn main(env: Environment) -> i32 {
+unsafe fn main(_env: Environment) -> i8 {
     println!("Test");
 
-    for (i, arg) in env.args().enumerate() {
-        println!("arg[{:2?}]: {}", i, arg);
-    }
+    let mut vec = alloc::vec::Vec::new();
 
-    for (i, (key, value)) in env.env().enumerate() {
-        println!("env[{:2?}]: {} = {}", i, key, value);
-    }
+    vec.extend(0..0xff);
+
+    dbg!(vec);
 
     0
 }

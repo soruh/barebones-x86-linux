@@ -1,27 +1,31 @@
 use core::fmt::Debug;
 use core::fmt::Write;
 
-use crate::syscalls::write;
+use crate::syscalls::write_str;
 
-fn write_str(fd: u32, s: &str) {
-    let (res1, res2) = unsafe { write(fd, s.as_ptr(), s.len()) };
-
-    // TODO: handle results
-}
+const FD_STD_OUT: u32 = 0;
+const FD_STD_ERR: u32 = 1;
+const FD_STD_IN: u32 = 2;
 
 pub struct StdOut;
 impl Write for StdOut {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        write_str(0, s);
-        Ok(())
+        if write_str(FD_STD_OUT, s).is_ok() {
+            Ok(())
+        } else {
+            Err(core::fmt::Error)
+        }
     }
 }
 
 pub struct StdErr;
 impl Write for StdErr {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        write_str(1, s);
-        Ok(())
+        if write_str(FD_STD_ERR, s).is_ok() {
+            Ok(())
+        } else {
+            Err(core::fmt::Error)
+        }
     }
 }
 
@@ -38,7 +42,7 @@ macro_rules! println {
         write!($crate::io::StdOut, concat!($format, "\n"), $($arg),*).expect("Failed to write to stdout");
     }};
     () => {
-        println!("\n");
+        println!("");
     };
 }
 
@@ -55,7 +59,7 @@ macro_rules! eprintln {
         write!($crate::io::StdErr, concat!($format, "\n"), $($arg),*).expect("Failed to write to stderr");
     }};
     () => {
-        eprintln!("\n");
+        eprintln!("");
     };
 }
 

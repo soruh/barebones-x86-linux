@@ -6,9 +6,20 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     use core::fmt::Write;
 
     // Discard the write result; Are already panicking...
-    let _ = write!(StdErr, "{}\n", info);
+    let _ = writeln!(StdErr, "{}", info);
 
     unsafe { exit(1) }
+}
+
+#[alloc_error_handler]
+fn __alloc_error_handler(layout: core::alloc::Layout) -> ! {
+    panic!("Failed to allocate memory of layout {:?}", layout)
+}
+
+// TODO: this is probably wrong :(
+#[no_mangle]
+fn rust_eh_personality() -> ! {
+    loop {}
 }
 
 #[no_mangle]

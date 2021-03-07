@@ -1,0 +1,14 @@
+[package]
+name = "barebones-x86-linux"
+version = "0.1.0"
+authors = ["soruh <mail@soruh.de>"]
+edition = "2018"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[dependencies]
+# compiler_builtins = { version = "0.1.39", features = ["mem"] }

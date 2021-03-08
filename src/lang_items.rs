@@ -5,7 +5,7 @@ use crate::syscalls::exit;
 fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     use core::fmt::Write;
 
-    // Discard the write result; Are already panicking...
+    // Discard the write result; We are already panicking...
     let _ = writeln!(StdErr, "{}", info);
 
     unsafe { exit(1) }
@@ -17,6 +17,4 @@ fn __alloc_error_handler(layout: core::alloc::Layout) -> ! {
 }
 
 #[no_mangle]
-extern "C" fn rust_eh_personality() -> ! {
-    loop {}
-}
+extern "C" fn rust_eh_personality() {}

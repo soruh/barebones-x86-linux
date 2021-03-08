@@ -82,3 +82,23 @@ macro_rules! dbg {
         ($(dbg!($val)),+,)
     };
 }
+
+macro_rules! dbg_p {
+    () => {
+        eprintln!("[{}:{}]", file!(), line!());
+    };
+    ($val:expr $(,)?) => {
+        // Use of `match` here is intentional because it affects the lifetimes
+        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        match $val {
+            tmp => {
+                eprintln!("[{}:{}] {} = {:#?}",
+                    file!(), line!(), stringify!($val), &tmp);
+                tmp
+            }
+        }
+    };
+    ($($val:expr),+ $(,)?) => {
+        ($(dbg!($val)),+,)
+    };
+}

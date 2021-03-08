@@ -1,5 +1,5 @@
-use crate::sync::*;
 use crate::syscalls;
+use crate::{sync::*, syscalls::Timespec};
 use core::{alloc::GlobalAlloc, mem::MaybeUninit};
 
 struct AllocatorInner {
@@ -10,7 +10,7 @@ struct AllocatorInner {
 unsafe impl Send for AllocatorInner {}
 unsafe impl Sync for AllocatorInner {}
 
-struct Allocator(MaybeUninit<BadMutex<AllocatorInner>>);
+struct Allocator(MaybeUninit<FutexMutex<AllocatorInner>>);
 
 unsafe impl Send for Allocator {}
 unsafe impl Sync for Allocator {}
@@ -34,7 +34,7 @@ pub unsafe fn init() -> Result<(), isize> {
     let base = syscalls::brk(core::ptr::null())?;
     let brk = base;
 
-    GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(BadMutex::new(AllocatorInner {
+    GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(FutexMutex::new(AllocatorInner {
         base,
         brk,
     })));
@@ -43,8 +43,8 @@ pub unsafe fn init() -> Result<(), isize> {
 }
 
 impl Allocator {
-    unsafe fn lock(&self) -> MutexGuard<'_, AllocatorInner> {
-        (&*(self.0.as_ptr() as *const BadMutex<AllocatorInner>)).lock()
+    unsafe fn lock(&self) -> FutexMutexGuard<'_, AllocatorInner> {
+        self.0.assume_init_ref().lock()
     }
 
     unsafe fn resize_brk(&self, offset: isize) -> Result<*const u8, isize> {
@@ -61,7 +61,6 @@ impl Allocator {
         eprintln!("alloc: {:?}", layout);
 
         let size = layout.size() + layout.align();
-        dbg!(size);
 
         let old_brk = if let Ok(old_brk) = self.resize_brk(size as isize) {
             old_brk
@@ -70,7 +69,6 @@ impl Allocator {
         };
 
         let align_offset = old_brk.align_offset(layout.align());
-        dbg!(align_offset);
 
         old_brk.add(align_offset) as *mut u8
     }

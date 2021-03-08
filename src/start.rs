@@ -14,21 +14,13 @@ unsafe extern "C" fn _start() -> ! {
         // clear base pointer
         "xor rbp, rbp",
 
-        // save original stack pointer
-        "mov rdx, rsp",
-
         // pop n_args into rdi (arg1)
         "pop rdi",
 
         // mov start pointer to start of args to rsi (arg2)
         "mov rsi, rsp",
 
-        // restore original stack pointer
-        "mov rsp, rdx",
-
         // align the stack pointer
-        // this invalidates the last two words (16bits) on the stack once we use the stack
-        // this is why we just read them into registers
         "and rsp, 0xfffffffffffffff0",
 
         // call _init

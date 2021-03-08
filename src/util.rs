@@ -16,9 +16,8 @@ fn __alloc_error_handler(layout: core::alloc::Layout) -> ! {
     panic!("Failed to allocate memory of layout {:?}", layout)
 }
 
-// TODO: this is probably wrong :(
 #[no_mangle]
-fn rust_eh_personality() -> ! {
+extern "C" fn rust_eh_personality() -> ! {
     loop {}
 }
 

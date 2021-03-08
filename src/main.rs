@@ -15,6 +15,7 @@ mod io;
 mod allocator;
 mod env;
 mod start;
+mod sync;
 mod syscalls;
 mod util;
 use env::Environment;
@@ -24,9 +25,9 @@ unsafe fn main(_env: Environment) -> i8 {
 
     let mut vec = alloc::vec::Vec::new();
 
-    vec.extend(0..0xff);
+    vec.extend(0..0x100);
 
-    dbg!(vec);
+    eprintln!("{:02X?}", vec);
 
     0
 }

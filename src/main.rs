@@ -4,6 +4,7 @@
 #![feature(naked_functions)]
 #![feature(alloc_error_handler)]
 #![feature(maybe_uninit_extra)]
+#![feature(link_args)]
 
 extern crate alloc;
 

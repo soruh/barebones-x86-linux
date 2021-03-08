@@ -1,6 +1,11 @@
+// link this binary without any startfiles
+#[allow(unused_attributes)]
+#[link_args = "-nostartfiles"]
+extern "C" {}
+
+#[allow(clippy::clippy::missing_safety_doc)] // (haha)
 #[no_mangle]
 #[naked]
-#[allow(clippy::clippy::missing_safety_doc)] // (haha)
 unsafe extern "C" fn _start() -> ! {
     // C call: rdi, rsi, rdx, rcx, r8, r9
     asm!(

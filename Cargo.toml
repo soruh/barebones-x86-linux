@@ -12,4 +12,4 @@ panic = "abort"
 
 [dependencies]
 # bitflags = "1.2.1"
-# compiler_builtins = { version = "0.1.39", features = ["mem"] }
+compiler_builtins = { version = "0.1.39", features = ["mem"] }

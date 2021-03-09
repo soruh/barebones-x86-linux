@@ -68,6 +68,10 @@ pub type Mutex<T> = FutexMutex<T, 16>;
 
 pub type NospinMutex<T> = FutexMutex<T, 1>;
 
+/// A mutex that spins `N` times, trying to aquire the lock
+/// and then futex waits until the previous lock is release
+/// !!!WARNING!!! do not use N=0 since in that case the mutex
+/// attempts to aquire the lock 0 times so it never does...
 pub struct FutexMutex<T, const N: usize> {
     is_locked: AtomicU32,
     data: UnsafeCell<T>,

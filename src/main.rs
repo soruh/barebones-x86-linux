@@ -28,7 +28,8 @@ use alloc::{format, sync::Arc, vec::Vec};
 use env::Environment;
 use sync::Mutex;
 
-const N: usize = 1_000_000;
+const N_LOOPS: usize = 1_000_000;
+const N_THREADS: usize = 16;
 
 unsafe fn main(_env: Environment) -> i8 {
     println!("Hello, World!");
@@ -37,14 +38,20 @@ unsafe fn main(_env: Environment) -> i8 {
 
     let data = Arc::new(Mutex::new(0));
 
-    let handles: Vec<_> = (0..10)
+    let handles: Vec<_> = (0..N_THREADS)
         .into_iter()
         .map(|i| {
             let data = data.clone();
 
             thread::spawn(
                 move || {
-                    worker(i, data);
+                    eprint!("{}", &format!("child {:X?}...\n", i));
+
+                    for _ in 0..N_LOOPS {
+                        *data.lock() += 1;
+                    }
+
+                    eprint!("{}", &format!("child {:X?} done\n", i));
 
                     42
                 },
@@ -54,7 +61,7 @@ unsafe fn main(_env: Environment) -> i8 {
         })
         .collect();
 
-    for _ in 0..10 * N {
+    for _ in 0..(N_THREADS * N_LOOPS) {
         *data.lock() -= 1;
     }
 
@@ -71,14 +78,4 @@ unsafe fn main(_env: Environment) -> i8 {
     assert_eq!(*data.lock(), 0);
 
     0
-}
-
-fn worker(i: i32, data: Arc<Mutex<i32>>) {
-    eprint!("{}", &format!("child {}...\n", i));
-
-    for _ in 0..N {
-        *data.lock() += 1;
-    }
-
-    eprint!("{}", &format!("child {} done\n", i));
 }

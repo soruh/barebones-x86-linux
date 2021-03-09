@@ -63,21 +63,21 @@ impl<'d, T> Drop for SpinMutexGuard<'d, T> {
     }
 }
 
-pub struct FutexMutex<T> {
+pub struct Mutex<T> {
     is_locked: AtomicU32,
     data: UnsafeCell<T>,
 }
 
-impl<T: Send + Sync> FutexMutex<T> {
+impl<T: Send + Sync> Mutex<T> {
     pub fn new(data: T) -> Self {
-        FutexMutex {
+        Mutex {
             is_locked: 0.into(),
             data: UnsafeCell::new(data),
         }
     }
 
     /// Lock the Mutex
-    pub fn lock(&self) -> FutexMutexGuard<'_, T> {
+    pub fn lock(&self) -> MutexGuard<'_, T> {
         // TODO: benchmark this
         const N_SPIN: usize = 100;
 
@@ -114,7 +114,7 @@ impl<T: Send + Sync> FutexMutex<T> {
             }
         }
 
-        FutexMutexGuard {
+        MutexGuard {
             mutex_var: mutex_var as *const AtomicU32,
             data: self.data.get(),
             _phantom: Default::default(),
@@ -153,13 +153,13 @@ impl<T: Send + Sync> FutexMutex<T> {
     }
 }
 
-pub struct FutexMutexGuard<'d, T> {
+pub struct MutexGuard<'d, T> {
     mutex_var: *const AtomicU32,
     data: *mut T,
     _phantom: PhantomData<&'d mut T>,
 }
 
-impl<'d, T> FutexMutexGuard<'d, T> {
+impl<'d, T> MutexGuard<'d, T> {
     /// consume the guard, returning the value and permanantly locking the mutex
     /// TODO: is this function safe?
     /// What about `Pin`? Do we need to require `Unpin`?
@@ -172,7 +172,7 @@ impl<'d, T> FutexMutexGuard<'d, T> {
     }
 }
 
-impl<'d, T> Deref for FutexMutexGuard<'d, T> {
+impl<'d, T> Deref for MutexGuard<'d, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -180,13 +180,13 @@ impl<'d, T> Deref for FutexMutexGuard<'d, T> {
     }
 }
 
-impl<'d, T> DerefMut for FutexMutexGuard<'d, T> {
+impl<'d, T> DerefMut for MutexGuard<'d, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.data }
     }
 }
 
-impl<'d, T> Drop for FutexMutexGuard<'d, T> {
+impl<'d, T> Drop for MutexGuard<'d, T> {
     fn drop(&mut self) {
         unsafe {
             // Unlock lock

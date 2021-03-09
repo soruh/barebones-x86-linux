@@ -10,7 +10,7 @@ struct AllocatorInner {
 unsafe impl Send for AllocatorInner {}
 unsafe impl Sync for AllocatorInner {}
 
-struct Allocator(MaybeUninit<FutexMutex<AllocatorInner>>);
+struct Allocator(MaybeUninit<Mutex<AllocatorInner>>);
 
 unsafe impl Send for Allocator {}
 unsafe impl Sync for Allocator {}
@@ -34,16 +34,13 @@ pub unsafe fn init() -> SyscallResult<()> {
     let base = syscalls::brk(core::ptr::null())?;
     let brk = base;
 
-    GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(FutexMutex::new(AllocatorInner {
-        base,
-        brk,
-    })));
+    GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(Mutex::new(AllocatorInner { base, brk })));
 
     Ok(())
 }
 
 impl Allocator {
-    unsafe fn lock(&self) -> FutexMutexGuard<'_, AllocatorInner> {
+    unsafe fn lock(&self) -> MutexGuard<'_, AllocatorInner> {
         self.0.assume_init_ref().lock()
     }
 

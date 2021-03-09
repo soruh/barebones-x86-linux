@@ -1,11 +1,11 @@
 use core::ptr::null_mut;
 
-use crate::{sync::FutexMutex, syscalls};
+use crate::{sync::Mutex, syscalls};
 use alloc::{boxed::Box, sync::Arc};
 use syscalls::{CloneFlags, SyscallResult};
 
 struct JoinHandleInner<T> {
-    data: FutexMutex<Option<T>>,
+    data: Mutex<Option<T>>,
     child_stack_allocation: *mut u8,
     allocated_size: usize,
 }
@@ -65,7 +65,7 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
     let child_stack = child_stack.add(child_stack.align_offset(ALIGN));
 
     let inner = Arc::new(JoinHandleInner {
-        data: FutexMutex::new(None),
+        data: Mutex::new(None),
         child_stack_allocation,
         allocated_size,
     });

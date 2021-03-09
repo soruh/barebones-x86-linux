@@ -26,7 +26,7 @@ mod syscalls;
 mod thread;
 use alloc::{format, sync::Arc, vec::Vec};
 use env::Environment;
-use sync::FutexMutex;
+use sync::Mutex;
 
 const N: usize = 1_000_000;
 
@@ -35,7 +35,7 @@ unsafe fn main(_env: Environment) -> i8 {
 
     eprintln!("spawning...");
 
-    let data = Arc::new(FutexMutex::new(0));
+    let data = Arc::new(Mutex::new(0));
 
     let handles: Vec<_> = (0..10)
         .into_iter()
@@ -73,7 +73,7 @@ unsafe fn main(_env: Environment) -> i8 {
     0
 }
 
-fn worker(i: i32, data: Arc<FutexMutex<i32>>) {
+fn worker(i: i32, data: Arc<Mutex<i32>>) {
     eprint!("{}", &format!("child {}...\n", i));
 
     for _ in 0..N {

@@ -63,7 +63,7 @@ unsafe fn main(_env: Environment) -> i8 {
     eprintln!("parent waiting...");
 
     for handle in handles {
-        handle.join();
+        assert_eq!(handle.join(), 42);
     }
 
     eprintln!("parent done");

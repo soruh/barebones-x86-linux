@@ -63,28 +63,30 @@ impl<'d, T> Drop for SpinMutexGuard<'d, T> {
     }
 }
 
-pub struct Mutex<T> {
+// TODO: benchmark this
+pub type Mutex<T> = FutexMutex<T, 16>;
+
+pub type NospinMutex<T> = FutexMutex<T, 1>;
+
+pub struct FutexMutex<T, const N: usize> {
     is_locked: AtomicU32,
     data: UnsafeCell<T>,
 }
 
-impl<T: Send + Sync> Mutex<T> {
+impl<T: Send + Sync, const N: usize> FutexMutex<T, N> {
     pub fn new(data: T) -> Self {
-        Mutex {
+        FutexMutex {
             is_locked: 0.into(),
             data: UnsafeCell::new(data),
         }
     }
 
     /// Lock the Mutex
-    pub fn lock(&self) -> MutexGuard<'_, T> {
-        // TODO: benchmark this
-        const N_SPIN: usize = 100;
-
+    pub fn lock(&self) -> FutexMutexGuard<'_, T> {
         let mutex_var = &self.is_locked;
 
         'outer: loop {
-            for _ in 0..N_SPIN {
+            for _ in 0..N {
                 // TODO: at least one of these Orderings can probably be `Aquire`
                 if mutex_var
                     .compare_exchange_weak(0, 1, Ordering::SeqCst, Ordering::SeqCst)
@@ -114,7 +116,7 @@ impl<T: Send + Sync> Mutex<T> {
             }
         }
 
-        MutexGuard {
+        FutexMutexGuard {
             mutex_var: mutex_var as *const AtomicU32,
             data: self.data.get(),
             _phantom: Default::default(),
@@ -153,13 +155,13 @@ impl<T: Send + Sync> Mutex<T> {
     }
 }
 
-pub struct MutexGuard<'d, T> {
+pub struct FutexMutexGuard<'d, T> {
     mutex_var: *const AtomicU32,
     data: *mut T,
     _phantom: PhantomData<&'d mut T>,
 }
 
-impl<'d, T> MutexGuard<'d, T> {
+impl<'d, T> FutexMutexGuard<'d, T> {
     /// consume the guard, returning the value and permanantly locking the mutex
     /// TODO: is this function safe?
     /// What about `Pin`? Do we need to require `Unpin`?
@@ -172,7 +174,7 @@ impl<'d, T> MutexGuard<'d, T> {
     }
 }
 
-impl<'d, T> Deref for MutexGuard<'d, T> {
+impl<'d, T> Deref for FutexMutexGuard<'d, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -180,13 +182,13 @@ impl<'d, T> Deref for MutexGuard<'d, T> {
     }
 }
 
-impl<'d, T> DerefMut for MutexGuard<'d, T> {
+impl<'d, T> DerefMut for FutexMutexGuard<'d, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.data }
     }
 }
 
-impl<'d, T> Drop for MutexGuard<'d, T> {
+impl<'d, T> Drop for FutexMutexGuard<'d, T> {
     fn drop(&mut self) {
         unsafe {
             // Unlock lock

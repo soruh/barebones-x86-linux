@@ -184,8 +184,6 @@ macro_rules! syscall_inner {
     };
 }
 
-use alloc::format;
-
 #[repr(transparent)]
 pub struct SyscallError(pub usize);
 

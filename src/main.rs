@@ -47,7 +47,7 @@ unsafe fn main(_env: Environment) -> i8 {
 
                     42
                 },
-                1024 * 1024 * 1024,
+                1024 * 1024,
             )
             .expect("Failed to spawn thread")
         })
@@ -76,18 +76,11 @@ use alloc::boxed::Box;
 
 #[inline(never)]
 fn worker(i: i32, data: Arc<FutexMutex<i32>>) {
-    eprintln!("{}", &format!("child {}...", i));
-    // eprintln!("child {}...", i);
-
-    /*
-    let vec: Box<[u8; 10]> = Box::new([0; 10]);
-    dbg!(vec);
-    */
+    eprint!("{}", &format!("child {}...\n", i));
 
     for _ in 0..N {
         *data.lock() += 1;
     }
 
-    eprintln!("{}", &format!("child {}. done", i));
-    // eprintln!("child {}. done", i);
+    eprint!("{}", &format!("child {} done\n", i));
 }

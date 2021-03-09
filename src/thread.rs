@@ -64,7 +64,7 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
 
     // We create a payload on the Heap so that we don't rely on any data on the stack after the clone
     // If we didn't to this we would just read uninitialized memory from the `child_stack`
-    // We pass the pointer to this heap allocation via `r12` since it's not used by syscalled
+    // We pass the pointer to this heap allocation via `r12` since it's not used by syscalls
     // neither by parameters nor clobbers
 
     struct Payload<T, F> {
@@ -72,7 +72,7 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
         inner: Arc<JoinHandleInner<T>>,
     }
 
-    let payload: Box<Payload<T, F>> = Box::new(Payload {
+    let payload = Box::new(Payload {
         closure: f,
         inner: inner.clone(),
     });
@@ -90,8 +90,10 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
 
             let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr);
 
+            // Call the provided closure
             let res = (payload.closure)();
 
+            // Write result to return value
             *payload.inner.data.lock() = Some(res);
 
             0

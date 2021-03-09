@@ -2,7 +2,7 @@
 #[macro_use]
 pub mod helper;
 pub mod raw;
-use core::ptr::null_mut;
+use core::{intrinsics::likely, ptr::null_mut};
 
 pub use raw::*;
 
@@ -74,13 +74,13 @@ pub unsafe fn clone(
     child_tid: *mut (),
     tls: u32,
 ) -> SyscallResult<u32> {
-    let pid = raw::clone(flags, stack, parent_tid, child_tid, tls)?;
-
-    if pid == 0 {
-        let ret = f();
-        exit(ret)
+    let res = raw::clone(flags, stack, parent_tid, child_tid, tls);
+    if likely(res == 0) {
+        exit(f());
+    } else if res < 0 {
+        Err(SyscallError(-res as usize))
     } else {
-        Ok(pid as u32)
+        Ok(res as u32)
     }
 }
 

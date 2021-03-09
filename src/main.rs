@@ -7,6 +7,7 @@
 #![feature(maybe_uninit_ref)]
 #![feature(link_args)]
 #![feature(lang_items)]
+#![feature(core_intrinsics)]
 
 extern crate alloc;
 
@@ -22,37 +23,71 @@ mod start;
 mod sync;
 mod syscalls;
 mod thread;
-use core::ptr::{null, null_mut};
-use core::time::Duration;
+use alloc::{format, sync::Arc, vec::Vec};
 use env::Environment;
-use syscalls::sleep;
+use sync::FutexMutex;
+
+const N: usize = 1_000_000;
 
 unsafe fn main(_env: Environment) -> i8 {
     println!("Hello, World!");
 
     eprintln!("spawning...");
 
-    let handle = thread::spawn(
-        || {
-            eprintln!("child...");
+    let data = Arc::new(FutexMutex::new(0));
 
-            sleep(Duration::from_secs(2)).unwrap();
+    let handles: Vec<_> = (0..10)
+        .into_iter()
+        .map(|i| {
+            let data = data.clone();
 
-            eprintln!("child done");
+            thread::spawn(
+                move || {
+                    worker(i, data);
 
-            42
-        },
-        1024 * 1024,
-    )
-    .expect("Failed to spawn thread");
+                    42
+                },
+                1024 * 1024 * 1024,
+            )
+            .expect("Failed to spawn thread")
+        })
+        .collect();
 
-    sleep(Duration::from_secs(1)).unwrap();
+    for _ in 0..10 * N {
+        *data.lock() -= 1;
+    }
+
+    // sleep(Duration::from_secs(1)).unwrap();
 
     eprintln!("parent waiting...");
 
-    let res = handle.join();
+    for handle in handles {
+        handle.join();
+    }
 
     eprintln!("parent done");
 
-    res
+    assert_eq!(*data.lock(), 0);
+
+    0
+}
+
+use alloc::boxed::Box;
+
+#[inline(never)]
+fn worker(i: i32, data: Arc<FutexMutex<i32>>) {
+    eprintln!("{}", &format!("child {}...", i));
+    // eprintln!("child {}...", i);
+
+    /*
+    let vec: Box<[u8; 10]> = Box::new([0; 10]);
+    dbg!(vec);
+    */
+
+    for _ in 0..N {
+        *data.lock() += 1;
+    }
+
+    eprintln!("{}", &format!("child {}. done", i));
+    // eprintln!("child {}. done", i);
 }

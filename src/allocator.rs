@@ -1,5 +1,6 @@
 use crate::syscalls;
 use crate::{sync::*, syscalls::*};
+use core::ptr::null;
 use core::{alloc::GlobalAlloc, mem::MaybeUninit};
 
 struct AllocatorInner {
@@ -51,6 +52,8 @@ impl Allocator {
         let mut inner = self.lock();
 
         let old_brk = inner.brk;
+
+        // assert_eq!(syscalls::brk(null())?, old_brk);
 
         inner.brk = syscalls::brk(inner.brk.offset(offset))?;
 

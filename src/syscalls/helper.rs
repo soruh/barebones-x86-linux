@@ -223,5 +223,10 @@ macro_rules! syscall {
             }
         }
     };
+    (RAW $syscall_no: expr $(, $arg: expr)*) => {
+        {
+             syscall_inner!($syscall_no $(, $arg as usize)*)
+        }
+    };
 
 }

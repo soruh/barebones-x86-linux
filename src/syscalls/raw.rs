@@ -91,8 +91,8 @@ pub unsafe fn clone(
     parent_tid: *mut (),
     child_tid: *mut (),
     tls: u32,
-) -> SyscallResult<u32> {
-    syscall!(
+) -> isize {
+    syscall!(RAW
         SYS_NO_CLONE,
         clone_flags.bits(),
         child_stack,

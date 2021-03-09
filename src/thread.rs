@@ -1,28 +1,20 @@
-use core::mem::MaybeUninit;
-use core::{fmt::Debug, ptr::null_mut};
+use core::ptr::null_mut;
 
 use crate::{sync::FutexMutex, syscalls};
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 use syscalls::{CloneFlags, SyscallResult};
 
 struct JoinHandleInner<T> {
     data: FutexMutex<Option<T>>,
-    child_stack: *mut u8,
-    stack_size: usize,
+    child_stack_allocation: *mut u8,
+    allocated_size: usize,
 }
 
 impl<T> Drop for JoinHandleInner<T> {
     fn drop(&mut self) {
+        // Drop the child's stack
         unsafe {
-            let child_stack = self.child_stack as *mut usize;
-
-            let child_stack = child_stack.sub(self.stack_size / core::mem::size_of::<usize>());
-
-            alloc::vec::Vec::<usize>::from_raw_parts(
-                child_stack,
-                0,
-                self.stack_size / core::mem::size_of::<usize>(),
-            )
+            alloc::vec::Vec::from_raw_parts(self.child_stack_allocation, 0, self.allocated_size)
         };
     }
 }
@@ -46,40 +38,61 @@ impl<T: Send + Sync> JoinHandle<T> {
 }
 
 /// Safety: the provided stack size must be big enough
-pub unsafe fn spawn<T: Send + Sync>(
-    f: impl Fn() -> T + 'static,
+pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
+    f: F,
     stack_size: usize,
 ) -> SyscallResult<JoinHandle<T>> {
-    let child_stack =
-        alloc::vec::Vec::<usize>::with_capacity(stack_size / core::mem::size_of::<usize>())
-            .as_mut_ptr();
+    // TODO: mmap this once we have mmap
 
-    let child_stack = child_stack.add(stack_size / core::mem::size_of::<usize>());
+    // This should be the same as we use with the main stack  %rsp & 0xfffffffffffffff0
+    // TODO: if we randomly SegFault increase this :))
+    const ALIGN: usize = 16;
 
-    let child_stack = child_stack as *mut u8;
+    let allocated_size = stack_size + ALIGN;
+
+    let child_stack_allocation = alloc::vec::Vec::<u8>::with_capacity(allocated_size).as_mut_ptr();
+
+    let child_stack = child_stack_allocation.add(stack_size);
+
+    let child_stack = child_stack.add(child_stack.align_offset(ALIGN));
 
     let inner = Arc::new(JoinHandleInner {
         data: FutexMutex::new(None),
-        child_stack,
-        stack_size,
+        child_stack_allocation,
+        allocated_size,
     });
 
-    let ptr = Arc::as_ptr(&inner);
+    // We create a payload on the Heap so that we don't rely on any data on the stack after the clone
+    // If we didn't to this we would just read uninitialized memory from the `child_stack`
+    // We pass the pointer to this heap allocation via `r12` since it's not used by syscalled
+    // neither by parameters nor clobbers
 
-    // TODO: are we certain r12 can not be overwritten during the syscall?
-    asm!("mov r12, {}", in(reg) ptr, out("r12") _);
+    struct Payload<T, F> {
+        closure: F,
+        inner: Arc<JoinHandleInner<T>>,
+    }
+
+    let payload: Box<Payload<T, F>> = Box::new(Payload {
+        closure: f,
+        inner: inner.clone(),
+    });
+
+    let payload_ptr = Box::into_raw(payload);
+
+    // TODO: are we certain r12 are not overwritten during the syscall?
+    asm!("mov r12, {}", in(reg) payload_ptr, out("r12") _);
 
     syscalls::clone(
         || {
-            let ptr: *const JoinHandleInner<T>;
+            let payload_ptr: *mut Payload<T, F>;
 
-            asm!("mov {}, r12", out(reg) ptr);
+            asm!("mov {}, r12", out(reg) payload_ptr);
 
-            let inner: Arc<JoinHandleInner<T>> = Arc::from_raw(ptr);
+            let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr);
 
-            let res = f();
+            let res = (payload.closure)();
 
-            *inner.data.lock() = Some(res);
+            *payload.inner.data.lock() = Some(res);
 
             0
         },

@@ -184,13 +184,40 @@ macro_rules! syscall_inner {
     };
 }
 
+use alloc::format;
+
+#[repr(transparent)]
+pub struct SyscallError(pub usize);
+
+pub type SyscallResult<T> = Result<T, SyscallError>;
+
+impl core::fmt::Debug for SyscallError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "SyscallError({})",
+            match self.0 {
+                22 => "EINVAL".into(),
+
+                i => format!("{}", i),
+            }
+        )
+    }
+}
+
+impl core::fmt::Display for SyscallError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 macro_rules! syscall {
     ($syscall_no: expr $(, $arg: expr)*) => {
         {
             let res = syscall_inner!($syscall_no $(, $arg as usize)*);
 
             if res < 0 {
-                Err(res)
+                Err($crate::syscalls::helper::SyscallError((-res) as usize))
             } else {
                 Ok(res as _)
             }

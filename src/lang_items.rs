@@ -16,5 +16,12 @@ fn __alloc_error_handler(layout: core::alloc::Layout) -> ! {
     panic!("Failed to allocate memory of layout {:?}", layout)
 }
 
+#[lang = "eh_personality"]
+unsafe fn eh_personality() {
+    asm!("ud2");
+}
+
 #[no_mangle]
-extern "C" fn rust_eh_personality() {}
+unsafe extern "C" fn _Unwind_Resume() {
+    asm!("ud2");
+}

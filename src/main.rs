@@ -6,6 +6,7 @@
 #![feature(maybe_uninit_extra)]
 #![feature(maybe_uninit_ref)]
 #![feature(link_args)]
+#![feature(lang_items)]
 
 extern crate alloc;
 
@@ -20,76 +21,38 @@ mod lang_items;
 mod start;
 mod sync;
 mod syscalls;
+mod thread;
 use core::ptr::{null, null_mut};
-
+use core::time::Duration;
 use env::Environment;
-use syscalls::CloneFlags;
+use syscalls::sleep;
 
 unsafe fn main(_env: Environment) -> i8 {
     println!("Hello, World!");
 
-    // let pid = syscalls::fork().expect("Failed to fork");
+    eprintln!("spawning...");
 
-    let STACK_SIZE = 1024 * 1024;
+    let handle = thread::spawn(
+        || {
+            eprintln!("child...");
 
-    // allocate u64's here to have an aligned stack
-    let mut child_stack =
-        alloc::vec::Vec::<u64>::with_capacity(STACK_SIZE / core::mem::size_of::<u64>());
+            sleep(Duration::from_secs(2)).unwrap();
 
-    let child_stack = (child_stack.as_mut_ptr() as *mut u8).add(STACK_SIZE);
+            eprintln!("child done");
 
-    eprintln!("cloning...");
-
-    let pid = syscalls::clone(
-        CloneFlags::empty(), //CloneFlags::VM, // TODO: | CloneFlags::IO
-        null_mut(),
-        null_mut(),
-        null_mut(),
-        0,
+            42
+        },
+        1024 * 1024,
     )
-    .expect("Failed to clone");
+    .expect("Failed to spawn thread");
 
-    dbg!(pid);
+    sleep(Duration::from_secs(1)).unwrap();
 
-    let stack_pointer: *const u8;
+    eprintln!("parent waiting...");
 
-    asm!(
-        "mov {0}, rsp",
-        out(reg) stack_pointer,
-    );
+    let res = handle.join();
 
-    dbg!(stack_pointer);
+    eprintln!("parent done");
 
-    loop {}
-
-    return 0;
-
-    if pid == 0 {
-        // We are the child
-
-        let mut vec = alloc::vec::Vec::new();
-
-        vec.extend(0..0x80);
-
-        eprintln!("{:02X?}", vec);
-    } else {
-        // We are the parent
-
-        let mut vec = alloc::vec::Vec::new();
-
-        vec.extend(0x80..0x100);
-
-        let mut status = 0;
-        let mut r_usage = syscalls::Rusage::default();
-
-        syscalls::wait4(pid, &mut status as *mut _, 0, &mut r_usage as *mut _)
-            .expect("Failed to wait for child");
-
-        dbg_p!(r_usage);
-        dbg!(status);
-
-        eprintln!("{:02X?}", vec);
-    }
-
-    0
+    res
 }

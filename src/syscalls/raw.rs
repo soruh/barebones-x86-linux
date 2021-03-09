@@ -1,26 +1,27 @@
+use super::helper::{SyscallError, SyscallResult};
+use bitflags::bitflags;
 use core::hint::unreachable_unchecked;
 
-use bitflags::bitflags;
+pub const SYS_NO_READ: usize = 0;
+pub const SYS_NO_WRITE: usize = 1;
+pub const SYS_NO_BRK: usize = 12;
+pub const SYS_NO_NANOSLEEP: usize = 35;
+pub const SYS_NO_CLONE: usize = 56;
+pub const SYS_NO_FORK: usize = 57;
+pub const SYS_NO_EXIT: usize = 60;
+pub const SYS_NO_WAIT4: usize = 61;
+pub const SYS_NO_FUTEX: usize = 202;
+pub const SYS_NO_WAITID: usize = 247;
 
-const SYS_NO_READ: usize = 0;
-const SYS_NO_WRITE: usize = 1;
-const SYS_NO_BRK: usize = 12;
-const SYS_NO_NANOSLEEP: usize = 35;
-const SYS_NO_CLONE: usize = 56;
-const SYS_NO_FORK: usize = 57;
-const SYS_NO_EXIT: usize = 60;
-const SYS_NO_WAIT4: usize = 61;
-const SYS_NO_FUTEX: usize = 202;
-
-pub unsafe fn read(fd: u32, buf: *mut u8, count: usize) -> Result<usize, isize> {
+pub unsafe fn read(fd: u32, buf: *mut u8, count: usize) -> SyscallResult<usize> {
     syscall!(SYS_NO_READ, fd, buf, count)
 }
 
-pub unsafe fn write(fd: u32, buf: *const u8, count: usize) -> Result<usize, isize> {
+pub unsafe fn write(fd: u32, buf: *const u8, count: usize) -> SyscallResult<usize> {
     syscall!(SYS_NO_WRITE, fd, buf, count)
 }
 
-pub unsafe fn brk(brk: *const u8) -> Result<*const u8, isize> {
+pub unsafe fn brk(brk: *const u8) -> SyscallResult<*const u8> {
     syscall!(SYS_NO_BRK, brk)
 }
 
@@ -83,13 +84,14 @@ bitflags! {
     }
 }
 
+#[inline(always)]
 pub unsafe fn clone(
     clone_flags: CloneFlags,
     child_stack: *mut u8,
     parent_tid: *mut (),
     child_tid: *mut (),
     tls: u32,
-) -> Result<u32, isize> {
+) -> SyscallResult<u32> {
     syscall!(
         SYS_NO_CLONE,
         clone_flags.bits(),
@@ -100,11 +102,11 @@ pub unsafe fn clone(
     )
 }
 
-pub unsafe fn nanosleep(rqtp: *const Timespec, rmtp: *mut Timespec) -> Result<usize, isize> {
+pub unsafe fn nanosleep(rqtp: *const Timespec, rmtp: *mut Timespec) -> SyscallResult<usize> {
     syscall!(SYS_NO_NANOSLEEP, rqtp, rmtp)
 }
 
-pub unsafe fn fork() -> Result<u32, isize> {
+pub unsafe fn fork() -> SyscallResult<u32> {
     syscall!(SYS_NO_FORK)
 }
 
@@ -155,7 +157,7 @@ pub unsafe fn wait4(
     stat_addr: *mut i32,
     options: i32,
     ru: *mut Rusage,
-) -> Result<u32, isize> {
+) -> SyscallResult<u32> {
     syscall!(SYS_NO_WAIT4, upid, stat_addr, options, ru)
 }
 
@@ -181,6 +183,36 @@ pub unsafe fn futex(
     utime: *mut Timespec,
     uaddr2: *mut u32,
     val3: u32,
-) -> Result<u64, isize> {
+) -> SyscallResult<u64> {
     syscall!(SYS_NO_FUTEX, uaddr, op, val, utime, uaddr2, val3)
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug)]
+pub enum IdType {
+    All = 0,
+    Pid = 1,
+    Gid = 2,
+    PidFd = 3,
+}
+
+bitflags::bitflags! {
+    pub struct WaitIdOption: u32 {
+        const NOHANG = 1;
+        const UNTRACED = 2;
+        const STOPPED = 2;
+        const EXITED = 4;
+        const CONTINUED = 8;
+        const NOWAIT = 0x1000000;
+    }
+}
+
+pub unsafe fn waitid(
+    which: IdType,
+    upid: u32,
+    infop: *mut (),
+    options: WaitIdOption,
+    ru: *mut Rusage,
+) -> SyscallResult<u64> {
+    syscall!(SYS_NO_WAITID, which, upid, infop, options.bits(), ru)
 }

@@ -1,5 +1,5 @@
 use crate::syscalls;
-use crate::{sync::*, syscalls::Timespec};
+use crate::{sync::*, syscalls::*};
 use core::{alloc::GlobalAlloc, mem::MaybeUninit};
 
 struct AllocatorInner {
@@ -30,7 +30,7 @@ static mut GLOBAL_ALLOCATOR: Allocator = Allocator(MaybeUninit::uninit());
 
 /// *must* be called before *any* allocations are made (probably in _start)
 /// *must* be called exactly once
-pub unsafe fn init() -> Result<(), isize> {
+pub unsafe fn init() -> SyscallResult<()> {
     let base = syscalls::brk(core::ptr::null())?;
     let brk = base;
 
@@ -47,7 +47,7 @@ impl Allocator {
         self.0.assume_init_ref().lock()
     }
 
-    unsafe fn resize_brk(&self, offset: isize) -> Result<*const u8, isize> {
+    unsafe fn resize_brk(&self, offset: isize) -> SyscallResult<*const u8> {
         let mut inner = self.lock();
 
         let old_brk = inner.brk;
@@ -58,7 +58,7 @@ impl Allocator {
     }
 
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        eprintln!("alloc: {:?}", layout);
+        // eprintln!("alloc: {:?}", layout);
 
         let size = layout.size() + layout.align();
 
@@ -75,6 +75,6 @@ impl Allocator {
 
     // TODO: do not leak all allocated memory..
     unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        eprintln!("dealloc: {:?} with {:?}", ptr, layout);
+        // eprintln!("dealloc: {:?} with {:?}", ptr, layout);
     }
 }

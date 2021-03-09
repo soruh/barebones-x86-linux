@@ -24,7 +24,9 @@ mod start;
 mod sync;
 mod syscalls;
 mod thread;
+
 use alloc::{format, sync::Arc, vec::Vec};
+use core::time::Duration;
 use env::Environment;
 use sync::Mutex;
 
@@ -65,8 +67,6 @@ unsafe fn main(_env: Environment) -> i8 {
         *data.lock() -= 1;
     }
 
-    // sleep(Duration::from_secs(1)).unwrap();
-
     eprintln!("parent waiting...");
 
     for handle in handles {
@@ -76,6 +76,12 @@ unsafe fn main(_env: Environment) -> i8 {
     eprintln!("parent done");
 
     assert_eq!(*data.lock(), 0);
+
+    eprint!("sleeping...");
+
+    syscalls::sleep(Duration::from_secs(1)).unwrap();
+
+    eprintln!("done");
 
     0
 }

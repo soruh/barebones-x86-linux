@@ -1,9 +1,11 @@
-use super::helper::{SyscallError, SyscallResult};
+use super::helper::SyscallResult;
 use bitflags::bitflags;
 use core::hint::unreachable_unchecked;
 
 pub const SYS_NO_READ: usize = 0;
 pub const SYS_NO_WRITE: usize = 1;
+pub const SYS_NO_MMAP: usize = 9;
+pub const SYS_NO_MUNMAP: usize = 11;
 pub const SYS_NO_BRK: usize = 12;
 pub const SYS_NO_NANOSLEEP: usize = 35;
 pub const SYS_NO_CLONE: usize = 56;
@@ -19,6 +21,62 @@ pub unsafe fn read(fd: u32, buf: *mut u8, count: usize) -> SyscallResult<usize> 
 
 pub unsafe fn write(fd: u32, buf: *const u8, count: usize) -> SyscallResult<usize> {
     syscall!(SYS_NO_WRITE, fd, buf, count)
+}
+
+bitflags! {
+    pub struct MProt: u64 {
+        const NONE = 0;
+        const READ = 1;
+        const WRITE = 2;
+        const EXEC = 4;
+        const GROWSDOWN = 0x01000000;
+        const GROWSUP = 0x02000000;
+    }
+}
+
+bitflags! {
+    pub struct MMapFlags: u64 {
+        const SHARED = 0x01;
+        const PRIVATE = 0x02;
+        const SHARED_VALIDATE = 0x03;
+        const TYPE = 0x0f;
+        const FIXED = 0x10;
+        const ANONYMOUS = 0x20;
+        const NORESERVE = 0x4000;
+        const GROWSDOWN = 0x0100;
+        const DENYWRITE = 0x0800;
+        const EXECUTABLE = 0x1000;
+        const LOCKED = 0x2000;
+        const POPULATE = 0x8000;
+        const NONBLOCK = 0x10000;
+        const STACK = 0x20000;
+        const HUGETLB = 0x40000;
+        const SYNC = 0x80000;
+        const FIXED_NOREPLACE = 0x100000;
+    }
+}
+
+pub unsafe fn mmap(
+    addr: *mut u8,
+    len: usize,
+    prot: MProt,
+    flags: MMapFlags,
+    fd: u64,
+    offset: u64,
+) -> SyscallResult<*mut u8> {
+    syscall!(
+        SYS_NO_MMAP,
+        addr,
+        len,
+        prot.bits(),
+        flags.bits(),
+        fd,
+        offset
+    )
+}
+
+pub unsafe fn munmap(addr: *mut u8, len: usize) -> SyscallResult<usize> {
+    syscall!(SYS_NO_MUNMAP, addr, len)
 }
 
 pub unsafe fn brk(brk: *const u8) -> SyscallResult<*const u8> {

@@ -14,7 +14,8 @@ impl<T> Drop for JoinHandleInner<T> {
     fn drop(&mut self) {
         // Drop the child's stack
         unsafe {
-            alloc::vec::Vec::from_raw_parts(self.child_stack_allocation, 0, self.allocated_size)
+            syscalls::munmap(self.child_stack_allocation, self.allocated_size)
+                .expect("Failed to munmap child stack")
         };
     }
 }
@@ -42,15 +43,22 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
     f: F,
     stack_size: usize,
 ) -> SyscallResult<JoinHandle<T>> {
-    // TODO: mmap this once we have mmap
-
     // This should be the same as we use with the main stack  %rsp & 0xfffffffffffffff0
     // TODO: if we randomly SegFault increase this :))
     const ALIGN: usize = 16;
 
     let allocated_size = stack_size + ALIGN;
 
-    let child_stack_allocation = alloc::vec::Vec::<u8>::with_capacity(allocated_size).as_mut_ptr();
+    use syscalls::{MMapFlags, MProt};
+
+    let child_stack_allocation = syscalls::mmap(
+        null_mut(),
+        allocated_size,
+        MProt::WRITE | MProt::READ | MProt::GROWSDOWN,
+        MMapFlags::ANONYMOUS | MMapFlags::PRIVATE | MMapFlags::GROWSDOWN | MMapFlags::STACK,
+        0,
+        0,
+    )?;
 
     let child_stack = child_stack_allocation.add(stack_size);
 

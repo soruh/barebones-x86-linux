@@ -1,4 +1,3 @@
-use core::fmt::Debug;
 use core::fmt::Write;
 
 use crate::syscalls::write_str;

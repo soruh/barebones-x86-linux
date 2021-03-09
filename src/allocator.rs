@@ -1,6 +1,5 @@
 use crate::syscalls;
 use crate::{sync::*, syscalls::*};
-use core::ptr::null;
 use core::{alloc::GlobalAlloc, mem::MaybeUninit};
 
 struct AllocatorInner {

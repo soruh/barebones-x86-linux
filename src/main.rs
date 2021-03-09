@@ -8,6 +8,7 @@
 #![feature(link_args)]
 #![feature(lang_items)]
 #![feature(core_intrinsics)]
+#![allow(unused_macros, dead_code)]
 
 extern crate alloc;
 
@@ -72,9 +73,6 @@ unsafe fn main(_env: Environment) -> i8 {
     0
 }
 
-use alloc::boxed::Box;
-
-#[inline(never)]
 fn worker(i: i32, data: Arc<FutexMutex<i32>>) {
     eprint!("{}", &format!("child {}...\n", i));
 

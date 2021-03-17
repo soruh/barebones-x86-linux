@@ -10,6 +10,7 @@
 #![feature(core_intrinsics)]
 #![allow(unused_macros, dead_code)]
 
+#[macro_use]
 extern crate alloc;
 
 // extern crate compiler_builtins;

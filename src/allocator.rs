@@ -5,6 +5,7 @@ use core::{alloc::GlobalAlloc, mem::MaybeUninit};
 struct AllocatorInner {
     base: *const u8,
     brk: *const u8,
+    head: *const u8,
 }
 
 unsafe impl Send for AllocatorInner {}
@@ -37,9 +38,35 @@ pub unsafe fn init() -> SyscallResult<()> {
     GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(FutexMutex::new(AllocatorInner {
         base,
         brk,
+        head: brk,
     })));
 
     Ok(())
+}
+
+const BLOCK_SHIFT: usize = 12;
+
+const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
+const BLOCK_LOWER_MASK: usize = usize::MAX >> (core::mem::size_of::<usize>() * 8 - BLOCK_SHIFT);
+
+impl AllocatorInner {
+    unsafe fn resize_brk(&mut self, offset: isize) -> SyscallResult<*const u8> {
+        let old_brk = self.brk;
+
+        self.brk = syscalls::brk(self.brk.offset(offset))?;
+
+        Ok(old_brk)
+    }
+
+    unsafe fn alloc_blocks(&mut self, n: usize) -> SyscallResult<*const u8> {
+        eprintln!("allocating {} blocks", n);
+
+        self.resize_brk((n * BLOCK_SIZE) as isize)
+    }
+
+    fn free_capacity(&self) -> usize {
+        self.brk as usize - self.head as usize
+    }
 }
 
 impl Allocator {
@@ -47,27 +74,34 @@ impl Allocator {
         self.0.assume_init_ref().lock()
     }
 
-    unsafe fn resize_brk(&self, offset: isize) -> SyscallResult<*const u8> {
-        let mut inner = self.lock();
-
-        let old_brk = inner.brk;
-
-        // assert_eq!(syscalls::brk(null())?, old_brk);
-
-        inner.brk = syscalls::brk(inner.brk.offset(offset))?;
-
-        Ok(old_brk)
-    }
-
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         // eprintln!("alloc: {:?}", layout);
 
         let size = layout.size() + layout.align();
 
-        let old_brk = if let Ok(old_brk) = self.resize_brk(size as isize) {
-            old_brk
-        } else {
-            return core::ptr::null_mut();
+        let old_brk = {
+            let mut inner = self.lock();
+
+            let needed_space = size.saturating_sub(inner.free_capacity());
+
+            if needed_space > 0 {
+                let mut n_block = needed_space >> BLOCK_SHIFT;
+
+                if needed_space & BLOCK_LOWER_MASK > 0 {
+                    n_block += 1;
+                }
+
+                if inner.alloc_blocks(n_block).is_err() {
+                    return core::ptr::null_mut();
+                }
+            }
+
+            // adjust head
+            let old_head = inner.head;
+
+            inner.head = inner.head.add(size);
+
+            old_head
         };
 
         let align_offset = old_brk.align_offset(layout.align());

@@ -44,21 +44,19 @@ pub unsafe fn init() -> SyscallResult<()> {
     Ok(())
 }
 
-const BLOCK_SHIFT: usize = 12;
+const BLOCK_SHIFT: usize = 12; // 4096 bytes
 
 const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 const BLOCK_LOWER_MASK: usize = usize::MAX >> (core::mem::size_of::<usize>() * 8 - BLOCK_SHIFT);
 
 impl AllocatorInner {
-    unsafe fn resize_brk(&mut self, offset: isize) -> SyscallResult<*const u8> {
-        let old_brk = self.brk;
-
+    unsafe fn resize_brk(&mut self, offset: isize) -> SyscallResult<()> {
         self.brk = syscalls::brk(self.brk.offset(offset))?;
 
-        Ok(old_brk)
+        Ok(())
     }
 
-    unsafe fn alloc_blocks(&mut self, n: usize) -> SyscallResult<*const u8> {
+    unsafe fn alloc_blocks(&mut self, n: usize) -> SyscallResult<()> {
         eprintln!("allocating {} blocks", n);
 
         self.resize_brk((n * BLOCK_SIZE) as isize)

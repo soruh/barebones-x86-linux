@@ -30,13 +30,13 @@ mod sync;
 mod syscalls;
 mod thread;
 
-use alloc::{boxed::Box, format, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{time::Duration, usize};
 use env::Environment;
 use sync::Mutex;
 
 unsafe fn main(env: Environment) -> i8 {
-    if false {
+    if true {
         alloc_test_main(env)
     } else {
         thread_test_main(env)
@@ -45,6 +45,27 @@ unsafe fn main(env: Environment) -> i8 {
 
 unsafe fn alloc_test_main(_env: Environment) -> i8 {
     println!("Hello, World!");
+
+    let mut v = Vec::with_capacity(1024);
+
+    // Test that allocating and dropping values in a loop does not repeatedly allocate new blocks
+    for i in 0..1024 {
+        let a: Box<u32> = Box::new(42);
+        let mut b: Box<u32> = Box::new(37);
+
+        #[inline(never)]
+        fn f(b: &mut u32) {
+            *b += 5;
+        }
+
+        f(&mut b);
+
+        assert_eq!(a, b);
+
+        v.push(i);
+    }
+
+    return 0;
 
     {
         let a: Box<u8> = Box::new(1);

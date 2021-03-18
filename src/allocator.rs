@@ -251,28 +251,41 @@ impl Block {
         }
 
         if self.check_if_empty() {
+            assert_eq!(self.n_bytes_allocated(), 0);
             self.0[0] &= !CHUNK_POPULATED_MASK;
+        } else {
+            assert_ne!(self.n_bytes_allocated(), 0);
         }
     }
 
     fn check_if_empty(&self) -> bool {
         let n_free_bits = self.n_chunks() - self.n_header_chunks();
 
+        // debug!("0x{:08b}", self.0[0]);
+
         if self.0[0] & CHUNK_HEADER_MASK != 0 {
+            // debug!("used chunk in embedded bits");
             return false;
         }
 
-        let n_full = n_free_bits / 8;
+        let n_embedded = 8 - N_CHUNK_SHIFT_BITS - EMPTY_BIT_SIZE;
+        let n_remaining_free_bits = n_free_bits - n_embedded;
+
+        let n_full = n_remaining_free_bits / 8;
         for i in 1..n_full {
             if self.0[i] != 0 {
+                // debug!("used chunk in full bits ({})", i);
                 return false;
             }
         }
 
-        let n_in_last = n_free_bits % 8;
+        let n_in_last = n_remaining_free_bits % 8;
         if self.0[n_full] & ((1 << n_in_last) - 1) != 0 {
+            // debug!("used chunk in tail bits");
             return false;
         }
+
+        // debug!("chunk is empty");
 
         true
     }
@@ -430,6 +443,12 @@ pub unsafe fn deinit() -> SyscallResult<()> {
         warn!("LEAKED MEMORY:");
 
         let n_bytes = inner.n_bytes_allocated();
+
+        if n_bytes == 0 {
+            panic!(
+                "allocator logic is wrong: there are allocated blocks left, but no allocated bytes"
+            );
+        }
 
         warn!(
             "program lost {} byte{} during it's lifetime, keeping {} block{} ({} bytes) allocated",

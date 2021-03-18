@@ -390,20 +390,8 @@ fn ceil_shr(x: usize, shift: u32) -> usize {
     }
 }
 
-/*
-
-const CHUNK_SHIFT: usize = 3;
-const CHUNK_SIZE: usize = 1 << CHUNK_SHIFT;
-const BLOCK_N_CHUNKS: usize = BLOCK_SIZE / CHUNK_SIZE;
-const BLOCK_FREE_MASK_SIZE: usize = BLOCK_N_CHUNKS / 8;
-const CHUNK_ALIGN: usize = if ALLOCATOR_ALIGN < CHUNK_SIZE {
-    ALLOCATOR_ALIGN
-} else {
-    CHUNK_SIZE
-};
- */
-
 /// NOTE: Owns the process `brk`
+/// => must be instanciated exactly once
 struct AllocatorInner {
     base: *mut Block,
     brk: *mut Block,

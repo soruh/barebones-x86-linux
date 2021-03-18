@@ -111,7 +111,7 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
 }
 
 unsafe fn thread_test_main(_env: Environment) -> i8 {
-    const N_LOOPS: usize = 1_000_000;
+    const N_LOOPS: usize = 2_000_000;
     const N_THREADS: usize = 16;
 
     println!("Hello, World!");

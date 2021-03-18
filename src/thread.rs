@@ -109,11 +109,11 @@ pub unsafe fn spawn<T: Send + Sync, F: FnOnce() -> T + 'static>(
 
             0
         },
-        CloneFlags::VM | CloneFlags::IO,
+        CloneFlags::VM | CloneFlags::IO | CloneFlags::THREAD | CloneFlags::SIGHAND,
         child_stack,
         null_mut(),
         null_mut(),
-        0,
+        null_mut(),
     )?;
 
     Ok(JoinHandle(inner))

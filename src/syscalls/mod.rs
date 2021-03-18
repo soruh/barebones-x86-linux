@@ -70,11 +70,11 @@ pub unsafe fn clone(
     f: impl Fn() -> i32,
     flags: CloneFlags,
     stack: *mut u8,
-    parent_tid: *mut (),
-    child_tid: *mut (),
-    tls: u32,
+    parent_tid: *mut u32,
+    child_tid: *mut u32,
+    thread_local: *mut (),
 ) -> SyscallResult<u32> {
-    let res = raw::clone(flags, stack, parent_tid, child_tid, tls);
+    let res = raw::clone(flags, stack, parent_tid, child_tid, thread_local);
     if likely(res == 0) {
         exit(f());
     } else if res < 0 {

@@ -146,9 +146,9 @@ bitflags! {
 pub unsafe fn clone(
     clone_flags: CloneFlags,
     child_stack: *mut u8,
-    parent_tid: *mut (),
-    child_tid: *mut (),
-    tls: u32,
+    parent_tid: *mut u32,
+    child_tid: *mut u32,
+    tls: *mut (),
 ) -> isize {
     syscall!(RAW
         SYS_NO_CLONE,

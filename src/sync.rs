@@ -77,16 +77,22 @@ pub struct FutexMutex<T, const N: usize> {
     data: UnsafeCell<T>,
 }
 
-impl<T: Send + Sync, const N: usize> FutexMutex<T, N> {
-    pub fn new(data: T) -> Self {
+unsafe impl<T, const N: usize> Send for FutexMutex<T, N> where T: Send {}
+unsafe impl<T, const N: usize> Sync for FutexMutex<T, N> where T: Sync {}
+
+impl<T, const N: usize> FutexMutex<T, N> {
+    pub const fn new(data: T) -> Self {
         FutexMutex {
-            is_locked: 0.into(),
+            is_locked: AtomicU32::new(0),
             data: UnsafeCell::new(data),
         }
     }
 
     /// Lock the Mutex
-    pub fn lock(&self) -> FutexMutexGuard<'_, T> {
+    pub fn lock(&self) -> FutexMutexGuard<'_, T>
+    where
+        T: Send + Sync,
+    {
         let mutex_var = &self.is_locked;
 
         'outer: loop {
@@ -103,6 +109,15 @@ impl<T: Send + Sync, const N: usize> FutexMutex<T, N> {
             }
 
             let mutex_var = mutex_var as *const AtomicU32;
+
+            unsafe {
+                let val = &(&*mutex_var).load(Ordering::Relaxed);
+                debug_assert!(
+                    (0..=1).contains(val),
+                    "mutex value was expected to be 0 or 1, but was acutally {}",
+                    val
+                );
+            }
 
             // Try to wait on the futex
             let res = unsafe { futex_wait(mutex_var as *mut u32, 1, None, FutexFlags::empty()) };

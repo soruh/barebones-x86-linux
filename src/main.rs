@@ -13,6 +13,9 @@
 #[macro_use]
 extern crate alloc;
 
+#[macro_use]
+extern crate log;
+
 // extern crate compiler_builtins;
 
 #[macro_use]
@@ -21,23 +24,83 @@ mod io;
 mod allocator;
 mod env;
 mod lang_items;
+mod logger;
 mod start;
 mod sync;
 mod syscalls;
 mod thread;
 
-use alloc::{format, sync::Arc, vec::Vec};
-use core::time::Duration;
+use alloc::{boxed::Box, format, sync::Arc, vec::Vec};
+use core::{time::Duration, usize};
 use env::Environment;
 use sync::Mutex;
 
-const N_LOOPS: usize = 1_000_000;
-const N_THREADS: usize = 16;
+unsafe fn main(env: Environment) -> i8 {
+    // TODO: this isn't great
+    log::set_logger(&logger::Logger).unwrap();
+    log::set_max_level(log::LevelFilter::Trace);
 
-unsafe fn main(_env: Environment) -> i8 {
+    error!("test");
+    warn!("test");
+
+    if false {
+        alloc_test_main(env)
+    } else {
+        thread_test_main(env)
+    }
+}
+
+unsafe fn alloc_test_main(_env: Environment) -> i8 {
     println!("Hello, World!");
 
-    eprintln!("spawning...");
+    {
+        let a: Box<u8> = Box::new(1);
+        let b: Box<u16> = Box::new(1);
+
+        dbg!(a);
+
+        Box::leak(b);
+    }
+
+    let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(1024 * 1024);
+
+    for i in 0..520 {
+        let mut a = [0; 32];
+        for j in 0..32 {
+            a[j] = (i + j) as u8;
+        }
+        v.push(Box::new(a));
+    }
+
+    let a: Box<u8> = Box::new(42);
+    let b: Box<u8> = Box::new(120);
+    let c: Box<u8> = Box::new(36);
+    let d: Box<u8> = Box::new(69);
+
+    let e =
+        Box::new(core::mem::transmute::<[i64; 4], core::arch::x86_64::__m256i>([1, 69, 420, 9]));
+
+    dbg!(a, b, c, d, e);
+
+    dbg!(v.len(), v.capacity());
+
+    for i in 0..520 {
+        let a = &v[i];
+        for j in 0..32 {
+            assert_eq!(a[j], (i + j) as u8);
+        }
+    }
+
+    0
+}
+
+unsafe fn thread_test_main(_env: Environment) -> i8 {
+    const N_LOOPS: usize = 1_000_000;
+    const N_THREADS: usize = 16;
+
+    println!("Hello, World!");
+
+    info!("spawning...");
 
     let data = Arc::new(Mutex::new(0));
 
@@ -48,13 +111,13 @@ unsafe fn main(_env: Environment) -> i8 {
 
             thread::spawn(
                 move || {
-                    eprint!("{}", &format!("child {:X?}...\n", i));
+                    info!("child {:X?}...", i);
 
                     for _ in 0..N_LOOPS {
                         *data.lock() += 1;
                     }
 
-                    eprint!("{}", &format!("child {:X?} done\n", i));
+                    info!("child {:X?} done", i);
 
                     42
                 },
@@ -68,21 +131,21 @@ unsafe fn main(_env: Environment) -> i8 {
         *data.lock() -= 1;
     }
 
-    eprintln!("parent waiting...");
+    info!("parent waiting...");
 
     for handle in handles {
         assert_eq!(handle.join(), 42);
     }
 
-    eprintln!("parent done");
+    info!("parent done");
 
     assert_eq!(*data.lock(), 0);
 
-    eprint!("sleeping...");
+    info!("sleeping...");
 
     syscalls::sleep(Duration::from_secs(1)).unwrap();
 
-    eprintln!("done");
+    info!("done");
 
     0
 }

@@ -37,5 +37,7 @@ unsafe extern "C" fn _init(n_args: usize, args_start: *const *const u8) -> ! {
 
     let exit_code = crate::main(env) as i32;
 
+    crate::allocator::deinit().expect("Failed to de-initialize global allocator");
+
     crate::syscalls::exit(exit_code)
 }

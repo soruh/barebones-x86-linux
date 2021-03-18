@@ -7,17 +7,20 @@ use core::{
     ptr::null_mut,
     usize,
 };
+// TODO: switch this to a linked list arena approach?
 
+// adjustable contants
 const BLOCK_SHIFT: usize = 14;
-
 // Allow a maximum loss of 12.5%. For everything more, mmap
 // Maximum loss is acchieved with minimum (1) and maximum (2096) chunks size
-const MMAP_THRESHOLD: usize = 1 << (BLOCK_SHIFT - 3);
+const MMAP_THRESHOLD_SHIFT: usize = BLOCK_SHIFT - 3;
+const ALLOCATOR_ALIGN: usize = 128;
+
+// derived constants
+const MMAP_THRESHOLD: usize = 1 << MMAP_THRESHOLD_SHIFT;
 
 const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 const BLOCK_LOWER_MASK: usize = BLOCK_SIZE - 1;
-
-const ALLOCATOR_ALIGN: usize = 128;
 
 const MAX_CHUNK_SHIFT: usize = BLOCK_SHIFT - 1;
 const N_CHUNK_SHIFT_BITS: usize =
@@ -29,8 +32,6 @@ const CHUNK_FULL_MASK: u8 = 1 << (N_CHUNK_SHIFT_BITS + 1);
 const CHUNK_HEADER_MASK: u8 = !(CHUNK_SHIFT_MASK | CHUNK_POPULATED_MASK);
 
 const STATUS_BITS_SIZE: usize = 2;
-
-// TODO: switch this to a linked list arena approach?
 
 #[derive(Debug, Copy, Clone)]
 #[repr(transparent)]
@@ -502,7 +503,7 @@ pub unsafe fn deinit() -> SyscallResult<()> {
         }
 
         warn!(
-            "program lost {} byte{} during it's lifetime, keeping {} block{} ({} bytes) allocated",
+            "program lost {} byte{} during its lifetime, keeping {} block{} ({} bytes) allocated",
             n_bytes,
             ordinal_s(n_bytes),
             leaked_blocks,
@@ -668,11 +669,9 @@ impl Allocator {
     }
 
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        trace!("alloc: {:?}", layout);
+        // trace!("alloc: {:?}", layout);
 
         let prefered_chunk_size = prefered_chunk_size(&layout);
-
-        dbg!(prefered_chunk_size, MMAP_THRESHOLD);
 
         let mut inner = self.lock();
 

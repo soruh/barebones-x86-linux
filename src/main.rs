@@ -36,13 +36,14 @@ use env::Environment;
 use sync::Mutex;
 
 unsafe fn main(env: Environment) -> i8 {
-    if true {
+    if false {
         alloc_test_main(env)
     } else {
         thread_test_main(env)
     }
 }
 
+#[allow(clippy::many_single_char_names)]
 unsafe fn alloc_test_main(_env: Environment) -> i8 {
     println!("Hello, World!");
 
@@ -92,8 +93,9 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
     let b: Box<u8> = Box::new(120);
     let c: Box<u8> = Box::new(36);
     let d: Box<u8> = Box::new(69);
-    let e =
-        Box::new(core::mem::transmute::<[i64; 4], core::arch::x86_64::__m256i>([1, 69, 420, 9]));
+
+    let e = core::mem::transmute::<[i64; 4], core::arch::x86_64::__m256i>([1, 69, 420, 9]);
+    let e = Box::new(e);
 
     dbg!(a, b, c, d, e);
 

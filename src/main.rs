@@ -65,8 +65,6 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
         v.push(i);
     }
 
-    return 0;
-
     {
         let a: Box<u8> = Box::new(1);
         let b: Box<u16> = Box::new(1);

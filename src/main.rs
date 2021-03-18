@@ -36,13 +36,6 @@ use env::Environment;
 use sync::Mutex;
 
 unsafe fn main(env: Environment) -> i8 {
-    // TODO: this isn't great
-    log::set_logger(&logger::Logger).unwrap();
-    log::set_max_level(log::LevelFilter::Trace);
-
-    error!("test");
-    warn!("test");
-
     if false {
         alloc_test_main(env)
     } else {

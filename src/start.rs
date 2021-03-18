@@ -35,6 +35,8 @@ unsafe extern "C" fn _init(n_args: usize, args_start: *const *const u8) -> ! {
 
     crate::allocator::init().expect("Failed to initialize global allocator");
 
+    crate::logger::init::<false>(log::LevelFilter::Trace).expect("Failed to initialize logg");
+
     let exit_code = crate::main(env) as i32;
 
     crate::allocator::deinit().expect("Failed to de-initialize global allocator");

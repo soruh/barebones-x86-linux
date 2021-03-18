@@ -1,8 +1,15 @@
 use log::Log;
 
-pub struct Logger;
+pub fn init<const VERBOSE: bool>(level: log::LevelFilter) -> Result<(), log::SetLoggerError> {
+    log::set_logger(&crate::logger::Logger::<VERBOSE>)?;
+    log::set_max_level(level);
 
-impl Log for Logger {
+    Ok(())
+}
+
+pub struct Logger<const VERBOSE: bool>;
+
+impl<const VERBOSE: bool> Log for Logger<VERBOSE> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
         // TODO
         true
@@ -23,6 +30,21 @@ impl Log for Logger {
         };
 
         let padding = if level.len() < 5 { " " } else { "" };
+
+        if VERBOSE {
+            if let (Some(file), Some(line)) = (record.file(), record.line()) {
+                eprintln!(
+                    "[\x1b[{}m{}{}\x1b[0m] [{}:{}] {}",
+                    color,
+                    level,
+                    padding,
+                    file,
+                    line,
+                    record.args()
+                );
+                return;
+            }
+        }
 
         eprintln!(
             "[\x1b[{}m{}{}\x1b[0m] {}",

@@ -1,9 +1,6 @@
 use core::fmt::Write;
 
-use crate::{
-    sync::{FutexMutex, Mutex},
-    syscalls::write_str,
-};
+use crate::{sync::Mutex, syscalls::write_str};
 
 const FD_STD_OUT: u32 = 0;
 const FD_STD_ERR: u32 = 1;

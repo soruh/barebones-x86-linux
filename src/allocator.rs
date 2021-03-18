@@ -9,7 +9,10 @@ use core::{
 };
 
 const BLOCK_SHIFT: usize = 14;
-const MMAP_THRESHOLD: usize = 1 << (BLOCK_SHIFT - 2);
+
+// Allow a maximum loss of 12.5%. For everything more, mmap
+// Maximum loss is acchieved with minimum (1) and maximum (2096) chunks size
+const MMAP_THRESHOLD: usize = 1 << (BLOCK_SHIFT - 3);
 
 const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 const BLOCK_LOWER_MASK: usize = BLOCK_SIZE - 1;
@@ -22,11 +25,14 @@ const N_CHUNK_SHIFT_BITS: usize =
 
 const CHUNK_SHIFT_MASK: u8 = (1 << N_CHUNK_SHIFT_BITS) - 1;
 const CHUNK_POPULATED_MASK: u8 = 1 << N_CHUNK_SHIFT_BITS;
+const CHUNK_FULL_MASK: u8 = 1 << (N_CHUNK_SHIFT_BITS + 1);
 const CHUNK_HEADER_MASK: u8 = !(CHUNK_SHIFT_MASK | CHUNK_POPULATED_MASK);
 
-const EMPTY_BIT_SIZE: usize = 1;
+const STATUS_BITS_SIZE: usize = 2;
 
-#[derive(Debug)]
+// TODO: switch this to a linked list arena approach?
+
+#[derive(Debug, Copy, Clone)]
 #[repr(transparent)]
 struct Block([u8; BLOCK_SIZE]);
 
@@ -47,7 +53,7 @@ impl Block {
     }
 
     fn free_header_bits(&self) -> usize {
-        self.chunk_size() * 8 - N_CHUNK_SHIFT_BITS - EMPTY_BIT_SIZE
+        self.chunk_size() * 8 - N_CHUNK_SHIFT_BITS - STATUS_BITS_SIZE
     }
 
     #[inline]
@@ -91,7 +97,7 @@ impl Block {
 
     #[inline]
     fn get_header_free_bit(&self, j: usize) -> bool {
-        let i = j + N_CHUNK_SHIFT_BITS + EMPTY_BIT_SIZE;
+        let i = j + N_CHUNK_SHIFT_BITS + STATUS_BITS_SIZE;
         let byte = i / 8;
         let offset = i % 8;
 
@@ -104,7 +110,7 @@ impl Block {
 
     #[inline]
     fn set_header_free_bit(&mut self, j: usize, val: bool) {
-        let i = j + N_CHUNK_SHIFT_BITS + EMPTY_BIT_SIZE;
+        let i = j + N_CHUNK_SHIFT_BITS + STATUS_BITS_SIZE;
         let byte = i / 8;
         let offset = i % 8;
 
@@ -163,6 +169,10 @@ impl Block {
     }
 
     fn alloc(&mut self, size: usize) -> Option<usize> {
+        if self.is_full() {
+            return None;
+        }
+
         let n_needed = ceil_shr(size, self.chunk_shift() as u32);
 
         let n_free_bits = self.n_chunks() - self.n_header_chunks();
@@ -227,6 +237,10 @@ impl Block {
 
             self.0[0] |= CHUNK_POPULATED_MASK;
 
+            if self.check_if_full() {
+                self.0[0] |= CHUNK_FULL_MASK;
+            }
+
             Some((self.first_chunk() + best.start) * self.chunk_size())
         } else {
             None
@@ -250,6 +264,8 @@ impl Block {
             }
         }
 
+        self.0[0] &= !CHUNK_FULL_MASK;
+
         if self.check_if_empty() {
             debug_assert_eq!(self.n_bytes_allocated(), 0);
             self.0[0] &= !CHUNK_POPULATED_MASK;
@@ -260,7 +276,7 @@ impl Block {
 
     fn check_if_empty(&self) -> bool {
         let n_free_bits = self.n_chunks() - self.n_header_chunks();
-        let n_embedded = 8 - N_CHUNK_SHIFT_BITS - EMPTY_BIT_SIZE;
+        let n_embedded = 8 - N_CHUNK_SHIFT_BITS - STATUS_BITS_SIZE;
         let n_remaining_free_bits = n_free_bits - n_embedded;
 
         if self.0[0] & CHUNK_HEADER_MASK != 0 {
@@ -289,6 +305,38 @@ impl Block {
         true
     }
 
+    fn check_if_full(&self) -> bool {
+        let n_free_bits = self.n_chunks() - self.n_header_chunks();
+        let n_embedded = 8 - N_CHUNK_SHIFT_BITS - STATUS_BITS_SIZE;
+        let n_remaining_free_bits = n_free_bits - n_embedded;
+
+        if self.0[0] & CHUNK_HEADER_MASK != CHUNK_HEADER_MASK {
+            // debug!("non full chunk in embedded bits");
+            return false;
+        }
+
+        let n_full = n_remaining_free_bits / 8;
+
+        let tail_index = n_full + 1;
+        for i in 1..tail_index {
+            if self.0[i] != u8::MAX {
+                // debug!("non full chunk in full bits ({})", i);
+                return false;
+            }
+        }
+
+        let n_in_last = n_remaining_free_bits % 8;
+        let mask = (1 << n_in_last) - 1;
+        if self.0[tail_index] & mask != mask {
+            // debug!("non full chunk in tail bits");
+            return false;
+        }
+
+        // debug!("chunk is full");
+
+        true
+    }
+
     fn n_chunks_used(&self) -> usize {
         let n_free_bits = self.n_chunks() - self.n_header_chunks();
         let n_header_bits = self.free_header_bits();
@@ -303,7 +351,7 @@ impl Block {
             };
 
             if !is_free {
-                n_chunks_in_use = 1;
+                n_chunks_in_use += 1;
             }
         }
 
@@ -316,6 +364,10 @@ impl Block {
 
     fn is_empty(&self) -> bool {
         self.0[0] & CHUNK_POPULATED_MASK == 0
+    }
+
+    fn is_full(&self) -> bool {
+        self.0[0] & CHUNK_FULL_MASK != 0
     }
 
     fn align(&self) -> usize {
@@ -483,13 +535,20 @@ impl AllocatorInner {
         let n_blocks = self.brk.offset_from(self.base);
 
         trace!(
-            "{} brk by {} block{}: {} -> {}",
-            if n > 0 { "Growing" } else { "Shrinking" },
+            "{}\x1b[m brk by {} block{} ({} bytes): {} -> {}",
+            if n > 0 {
+                "\x1b[32mGrowing"
+            } else {
+                "\x1b[33mShrinking"
+            },
             n.abs(),
             ordinal_s(n.abs() as usize),
+            n.abs() as usize * BLOCK_SIZE,
             n_blocks,
             n_blocks + n
         );
+
+        // dbg!(self.n_bytes_allocated());
 
         self.brk = syscalls::brk(self.brk.offset(n) as *const u8)? as *mut Block;
 
@@ -520,49 +579,63 @@ impl AllocatorInner {
         Ok(())
     }
 
-    unsafe fn alloc_block(&mut self, chunk_shift: usize) -> SyscallResult<*mut Block> {
+    unsafe fn alloc_blocks(&mut self, requested: usize, chunk_shift: usize) -> SyscallResult<()> {
         debug_assert!(chunk_shift <= MAX_CHUNK_SHIFT);
+
+        let mut n = requested;
+
+        let mut new_block = Block([0; BLOCK_SIZE]);
+        new_block.0[0] = chunk_shift as u8;
 
         #[allow(clippy::never_loop)]
         let block_ptr = 'outer: loop {
             // try to reuse an existing, but empty block
-            let n = self.brk.offset_from(self.base) as usize;
+            let n_blocks = self.brk.offset_from(self.base) as usize;
 
-            for i in 0..n {
+            for i in 0..n_blocks {
                 let block_ptr = self.base.add(i);
 
                 let block = &mut *block_ptr;
 
                 if block.is_empty() {
-                    let chunk_n = self.base.offset_from(block_ptr);
-                    trace!("reusing existing empty chunk #{}", chunk_n);
+                    let chunk_n = block_ptr.offset_from(self.base);
+                    trace!("reusing existing empty chunk \x1b[34m#{}\x1b[m", chunk_n);
 
-                    break 'outer block_ptr;
+                    *block_ptr = new_block;
+
+                    n -= 1;
+                    if n == 0 {
+                        break 'outer block_ptr;
+                    }
                 }
             }
 
             // allocate a new block
             let block_ptr = self.brk;
 
-            self.resize_brk(1)?;
+            self.resize_brk(n as isize)?;
+
+            for i in 0..n {
+                let block_ptr = block_ptr.add(i);
+                *block_ptr = new_block;
+            }
 
             break block_ptr;
         };
-
-        let mut block = Block([0; BLOCK_SIZE]);
-        block.0[0] = chunk_shift as u8;
-        *block_ptr = block;
 
         {
             let created_block = &*block_ptr;
 
             let n_chunks = created_block.n_chunks();
-            let n_useable = created_block.n_chunks() - created_block.n_header_chunks();
+            let n_useable = n_chunks - created_block.n_header_chunks();
 
             let loss = 100. * (1.0 - n_useable as f64 / n_chunks as f64);
 
             trace!(
-                "Allocated a block with {} ({} useable | \x1b[{}m{:.1}%\x1b[m loss) {} byte chunk{}, aligned to {}",
+                "Allocated {} block{} ({} reused) with {} ({} useable | \x1b[{}m{:.1}%\x1b[m loss) {} byte chunk{}, aligned to {} bits",
+                requested,
+                ordinal_s(n),
+                requested - n,
                 n_chunks,
                 n_useable,
                 if loss < 5. {
@@ -579,7 +652,7 @@ impl AllocatorInner {
             );
         }
 
-        Ok(block_ptr)
+        Ok(())
     }
 }
 
@@ -595,9 +668,11 @@ impl Allocator {
     }
 
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        // trace!("alloc: {:?}", layout);
+        trace!("alloc: {:?}", layout);
 
-        // dbg!(prefered_chunk_size);
+        let prefered_chunk_size = prefered_chunk_size(&layout);
+
+        dbg!(prefered_chunk_size, MMAP_THRESHOLD);
 
         let mut inner = self.lock();
 
@@ -640,7 +715,7 @@ impl Allocator {
 
                 let block = &mut *block_ptr;
 
-                if block.chunk_size() == prefered_chunk_size(&layout) {
+                if block.chunk_size() == prefered_chunk_size {
                     if let Some(offset) = block.alloc(layout.size()) {
                         let block_ptr = block_ptr as *mut u8;
 
@@ -667,7 +742,7 @@ impl Allocator {
                 unreachable!();
             }
 
-            let chunk_size = prefered_chunk_size(&layout);
+            let chunk_size = prefered_chunk_size;
 
             let shift = size_of::<usize>() * 8 - chunk_size.leading_zeros() as usize - 1;
 
@@ -682,7 +757,21 @@ impl Allocator {
 
             let shift = shift.min(MAX_CHUNK_SHIFT);
 
-            if inner.alloc_block(shift).is_err() {
+            let mut n_existing_blocks = 0;
+
+            for i in 0..n {
+                let block_ptr = inner.base.add(i);
+
+                let block = &mut *block_ptr;
+
+                if block.chunk_shift() as usize == shift {
+                    n_existing_blocks += 1;
+                }
+            }
+
+            let n_new_blocks = (n_existing_blocks >> 1).max(1);
+
+            if inner.alloc_blocks(n_new_blocks, shift).is_err() {
                 break 'outer null_mut();
             }
 

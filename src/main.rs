@@ -46,6 +46,10 @@ unsafe fn main(env: Environment) -> i8 {
 unsafe fn alloc_test_main(_env: Environment) -> i8 {
     println!("Hello, World!");
 
+    let x = Box::new([0u8; (2 << 11) - 1]);
+
+    dbg!(x.len());
+
     let mut v = Vec::with_capacity(1024);
 
     // Test that allocating and dropping values in a loop does not repeatedly allocate new blocks
@@ -76,10 +80,10 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
 
     let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(1024 * 1024);
 
-    for i in 0..520 {
+    for i in 0..10 * 1024 {
         let mut a = [0; 32];
-        for j in 0..32 {
-            a[j] = (i + j) as u8;
+        for (j, x) in a.iter_mut().enumerate() {
+            *x = (i + j) as u8;
         }
         v.push(Box::new(a));
     }
@@ -88,7 +92,6 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
     let b: Box<u8> = Box::new(120);
     let c: Box<u8> = Box::new(36);
     let d: Box<u8> = Box::new(69);
-
     let e =
         Box::new(core::mem::transmute::<[i64; 4], core::arch::x86_64::__m256i>([1, 69, 420, 9]));
 
@@ -96,10 +99,9 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
 
     dbg!(v.len(), v.capacity());
 
-    for i in 0..520 {
-        let a = &v[i];
-        for j in 0..32 {
-            assert_eq!(a[j], (i + j) as u8);
+    for (i, a) in v.iter().enumerate() {
+        for (j, x) in a.iter().enumerate() {
+            assert_eq!(*x, (i + j) as u8);
         }
     }
 

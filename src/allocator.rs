@@ -452,6 +452,7 @@ pub unsafe fn init() -> SyscallResult<()> {
 
     let base = base as *mut Block;
 
+    // Safety: This Mutex is contained in a static and thus `Pin`ed
     GLOBAL_ALLOCATOR = Allocator(MaybeUninit::new(FutexMutex::new(AllocatorInner {
         base,
         brk: base,
@@ -777,6 +778,7 @@ impl Allocator {
         // trace!("dealloc: {:?} with {:?}", ptr, layout);
 
         if layout.size() >= MMAP_THRESHOLD {
+            // debug!("munmap-ing");
             // trace!("dealloc: {:?} with {:?}", ptr, layout);
 
             let allocation_size = layout.size() + layout.align() + size_of::<*mut u8>();
@@ -802,6 +804,8 @@ impl Allocator {
 
         let block_index = offset / BLOCK_SIZE;
         let offset_in_block = offset % BLOCK_SIZE;
+
+        // dbg!(block_index, offset_in_block);
 
         let block_ptr = inner.base.add(block_index);
 

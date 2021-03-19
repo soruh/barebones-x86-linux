@@ -28,8 +28,9 @@ impl Write for StdErr {
     }
 }
 
-pub static STD_OUT: Mutex<()> = Mutex::new(());
-pub static STD_ERR: Mutex<()> = Mutex::new(());
+// Safety: static and are thus pinned
+pub static STD_OUT: Mutex<()> = unsafe { Mutex::new(()) };
+pub static STD_ERR: Mutex<()> = unsafe { Mutex::new(()) };
 
 macro_rules! print {
     ($format: literal $(, $arg: expr)* $(,)?) => {{

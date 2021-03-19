@@ -66,8 +66,6 @@ impl<'d, T> Drop for SpinMutexGuard<'d, T> {
 // TODO: benchmark this
 pub type Mutex<T> = FutexMutex<T, 16>;
 
-pub type NospinMutex<T> = FutexMutex<T, 1>;
-
 /// A mutex that spins `N` times, trying to aquire the lock
 /// and then futex waits until the previous lock is release
 /// !!!WARNING!!! do not use N=0 since in that case the mutex
@@ -75,16 +73,19 @@ pub type NospinMutex<T> = FutexMutex<T, 1>;
 pub struct FutexMutex<T, const N: usize> {
     is_locked: AtomicU32,
     data: UnsafeCell<T>,
+    _needs_pin: core::marker::PhantomPinned,
 }
 
 unsafe impl<T, const N: usize> Send for FutexMutex<T, N> where T: Send {}
 unsafe impl<T, const N: usize> Sync for FutexMutex<T, N> where T: Sync {}
 
 impl<T, const N: usize> FutexMutex<T, N> {
-    pub const fn new(data: T) -> Self {
+    /// Safety: must be pinned
+    pub const unsafe fn new(data: T) -> Self {
         FutexMutex {
             is_locked: AtomicU32::new(0),
             data: UnsafeCell::new(data),
+            _needs_pin: core::marker::PhantomPinned,
         }
     }
 
@@ -93,12 +94,13 @@ impl<T, const N: usize> FutexMutex<T, N> {
     where
         T: Send + Sync,
     {
-        let mutex_var = &self.is_locked;
+        let mutex_var = &self.is_locked as *const AtomicU32;
 
         'outer: loop {
             for _ in 0..N {
                 // TODO: at least one of these Orderings can probably be `Aquire`
-                if mutex_var
+                if self
+                    .is_locked
                     .compare_exchange_weak(0, 1, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
@@ -108,19 +110,17 @@ impl<T, const N: usize> FutexMutex<T, N> {
                 core::hint::spin_loop();
             }
 
-            let mutex_var = mutex_var as *const AtomicU32;
-
             unsafe {
-                let val = &(&*mutex_var).load(Ordering::Relaxed);
+                let val = (&*mutex_var).load(Ordering::Relaxed);
                 debug_assert!(
-                    (0..=1).contains(val),
+                    (0..=1).contains(&val),
                     "mutex value was expected to be 0 or 1, but was acutally {}",
                     val
                 );
             }
 
             // Try to wait on the futex
-            let res = unsafe { futex_wait(mutex_var as *mut u32, 1, None, FutexFlags::empty()) };
+            let res = unsafe { futex_wait(mutex_var, 1, None, FutexFlags::empty()) };
 
             if let Err(err) = res {
                 if err.0 != 11 {
@@ -136,7 +136,7 @@ impl<T, const N: usize> FutexMutex<T, N> {
         }
 
         FutexMutexGuard {
-            mutex_var: mutex_var as *const AtomicU32,
+            mutex_var,
             data: self.data.get(),
             _phantom: Default::default(),
         }
@@ -146,7 +146,7 @@ impl<T, const N: usize> FutexMutex<T, N> {
     /// If the lock is already locked reutrn immediately
     /// returns if we actually waited
     pub fn wait(&self) -> bool {
-        let mutex_var = &self.is_locked as *const AtomicU32 as *mut u32;
+        let mutex_var = &self.is_locked as *const AtomicU32;
 
         // Wait until the futex is locked
         let res = unsafe { futex_wait(mutex_var, 0, None, FutexFlags::empty()) };
@@ -172,6 +172,14 @@ impl<T, const N: usize> FutexMutex<T, N> {
             true
         }
     }
+
+    pub fn wake_all(&self) {
+        unsafe {
+            let mutex_var = &self.is_locked as *const AtomicU32;
+
+            futex_wake(mutex_var, None).expect("Failed to wake futex");
+        }
+    }
 }
 
 pub struct FutexMutexGuard<'d, T> {
@@ -182,8 +190,9 @@ pub struct FutexMutexGuard<'d, T> {
 
 impl<'d, T> FutexMutexGuard<'d, T> {
     /// consume the guard, returning the value and permanantly locking the mutex
-    /// TODO: is this function safe?
+
     /// What about `Pin`? Do we need to require `Unpin`?
+    /// => We require the Mutex to be Pinned
     pub fn consume(self) -> T {
         let res = unsafe { self.data.read() };
 
@@ -214,7 +223,7 @@ impl<'d, T> Drop for FutexMutexGuard<'d, T> {
             (&*self.mutex_var).store(0, Ordering::Release);
 
             // Wake up one waiting thread
-            futex_wake(self.mutex_var as *mut u32, Some(1)).expect("Failed to wake futex");
+            futex_wake(self.mutex_var, Some(1)).expect("Failed to wake futex");
         }
     }
 }

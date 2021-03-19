@@ -6,7 +6,17 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     use core::fmt::Write;
 
     // Discard the write result; We are already panicking...
-    let _ = writeln!(StdErr, "{}", info);
+    let _ = match (info.message(), info.location()) {
+        (Some(message), Some(location)) => writeln!(
+            StdErr,
+            "\x1b[31mpanicked\x1b[m at '{:?}', {}",
+            message, location
+        ),
+        (Some(message), None) => writeln!(StdErr, "\x1b[31mpanicked\x1b[m at '{}'", message),
+        (None, Some(location)) => writeln!(StdErr, "\x1b[31mpanicked\x1b[m at {}", location),
+
+        _ => writeln!(StdErr, "\x1b[31mpanicked\x1b[m"),
+    };
 
     unsafe { exit(1) }
 }

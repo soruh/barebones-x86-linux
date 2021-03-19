@@ -2,7 +2,7 @@
 #[macro_use]
 pub mod helper;
 pub mod raw;
-use core::{intrinsics::likely, ptr::null_mut};
+use core::{ptr::null_mut, sync::atomic::AtomicU32};
 
 pub use raw::*;
 
@@ -36,8 +36,10 @@ bitflags::bitflags! {
     }
 }
 
+type FutexVar = *const AtomicU32;
+
 pub unsafe fn futex_wait(
-    uaddr: *mut u32,
+    uaddr: FutexVar,
     val: u32,
     time: Option<&mut Timespec>,
     flags: FutexFlags,
@@ -51,7 +53,7 @@ pub unsafe fn futex_wait(
     raw::futex(uaddr, op, val, utime, core::ptr::null_mut(), 0)
 }
 
-pub unsafe fn futex_wake(uaddr: *mut u32, n: Option<u32>) -> SyscallResult<u64> {
+pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> {
     let op = FutexOp::Wake as i32;
 
     let val = n.unwrap_or(u32::MAX);
@@ -66,16 +68,44 @@ pub unsafe fn futex_wake(uaddr: *mut u32, n: Option<u32>) -> SyscallResult<u64> 
     )
 }
 
+#[inline(never)]
+pub unsafe fn clone3(f: unsafe fn() -> i32, args: CloneArgs) -> SyscallResult<u32> {
+    // asm!("int3");
+
+    asm!("mov r13, {}", in(reg) f, lateout("r13") _);
+
+    let res = raw::clone3(&args as *const _, core::mem::size_of::<CloneArgs>());
+    if res == 0 {
+        let f: unsafe fn() -> i32;
+
+        asm!("mov {}, r13", out(reg) f);
+
+        let res = f();
+
+        exit(res);
+    } else if res < 0 {
+        Err(SyscallError(-res as usize))
+    } else {
+        Ok(res as u32)
+    }
+}
+
 pub unsafe fn clone(
-    f: impl Fn() -> i32,
+    f: unsafe fn() -> i32,
     flags: CloneFlags,
     stack: *mut u8,
     parent_tid: *mut u32,
     child_tid: *mut u32,
     thread_local: *mut (),
 ) -> SyscallResult<u32> {
+    asm!("mov r13, {}", in(reg) f, lateout("r13") _);
+
     let res = raw::clone(flags, stack, parent_tid, child_tid, thread_local);
-    if likely(res == 0) {
+    if res == 0 {
+        let f: unsafe fn() -> i32;
+
+        asm!("mov {}, r13", out(reg) f);
+
         exit(f());
     } else if res < 0 {
         Err(SyscallError(-res as usize))

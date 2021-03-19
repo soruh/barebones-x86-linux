@@ -1,6 +1,6 @@
 use super::helper::SyscallResult;
 use bitflags::bitflags;
-use core::hint::unreachable_unchecked;
+use core::{hint::unreachable_unchecked, sync::atomic::AtomicU32};
 
 pub const SYS_NO_READ: usize = 0;
 pub const SYS_NO_WRITE: usize = 1;
@@ -14,6 +14,7 @@ pub const SYS_NO_EXIT: usize = 60;
 pub const SYS_NO_WAIT4: usize = 61;
 pub const SYS_NO_FUTEX: usize = 202;
 pub const SYS_NO_WAITID: usize = 247;
+pub const SYS_NO_CLONE3: usize = 435;
 
 pub unsafe fn read(fd: u32, buf: *mut u8, count: usize) -> SyscallResult<usize> {
     syscall!(SYS_NO_READ, fd, buf, count)
@@ -84,7 +85,7 @@ pub unsafe fn brk(brk: *const u8) -> SyscallResult<*const u8> {
 }
 
 bitflags! {
-    pub struct CloneFlags: u64 {
+    pub struct CloneFlags: usize {
         /// set if VM shared between processes
         const VM = 0x00000100;
         /// set if fs info shared between processes
@@ -160,14 +161,53 @@ pub unsafe fn clone(
     )
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CloneArgs {
+    /// Flags bit mask
+    pub flags: CloneFlags,
+    /// Where to store PID file descriptor (pid_t *)
+    pub pidfd: usize,
+    /// Where to store child TID, in child's memory (pid_t *)
+    pub child_tid: *mut u32,
+    /// Where to store child TID, in parent's memory (int *)
+    pub parent_tid: *mut u32,
+    /// Signal to deliver to parent on child termination
+    pub exit_signal: usize,
+    /// Pointer to lowest byte of stack
+    pub stack: *mut u8,
+    /// Size of stack
+    pub stack_size: usize,
+    /// Location of new TLS
+    pub tls: *mut (),
+    /// Pointer to a pid_t array (since Linux 5.5)
+    pub set_tid: *mut u32,
+    /// Number of elements in set_tid (since Linux 5.5)
+    pub set_tid_size: usize,
+    /// File descriptor for target cgroup of child (since Linux 5.7)
+    pub cgroup: usize,
+}
+
+#[inline(always)]
+pub unsafe fn clone3(cl_args: *const CloneArgs, size: usize) -> isize {
+    syscall!(RAW
+        SYS_NO_CLONE3,
+        cl_args,
+        size
+    )
+}
+
+#[inline(always)]
 pub unsafe fn nanosleep(rqtp: *const Timespec, rmtp: *mut Timespec) -> SyscallResult<usize> {
     syscall!(SYS_NO_NANOSLEEP, rqtp, rmtp)
 }
 
+#[inline(always)]
 pub unsafe fn fork() -> SyscallResult<u32> {
     syscall!(SYS_NO_FORK)
 }
 
+#[inline(always)]
 pub unsafe fn exit(code: i32) -> ! {
     let _: usize = syscall!(SYS_NO_EXIT, code).expect("Failed to call exit");
     unreachable_unchecked()
@@ -210,6 +250,7 @@ pub struct Rusage {
     ru_nivcsw: i64,
 }
 
+#[inline(always)]
 pub unsafe fn wait4(
     upid: u32,
     stat_addr: *mut i32,
@@ -234,8 +275,9 @@ impl Timespec {
     }
 }
 
+#[inline(always)]
 pub unsafe fn futex(
-    uaddr: *mut u32,
+    uaddr: *const AtomicU32,
     op: i32,
     val: u32,
     utime: *mut Timespec,
@@ -265,6 +307,7 @@ bitflags::bitflags! {
     }
 }
 
+#[inline(always)]
 pub unsafe fn waitid(
     which: IdType,
     upid: u32,

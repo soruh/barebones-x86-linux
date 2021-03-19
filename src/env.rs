@@ -3,6 +3,10 @@ pub struct Environment {
     env_start: *const *const u8,
 }
 
+// TODO: is this correct?
+unsafe impl Send for Environment {}
+unsafe impl Sync for Environment {}
+
 impl Environment {
     fn n_args(&self) -> usize {
         (unsafe { self.env_start.offset_from(self.args_start) - 1 }) as usize

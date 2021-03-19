@@ -3,13 +3,14 @@
 #![feature(asm)]
 #![feature(naked_functions)]
 #![feature(alloc_error_handler)]
-#![feature(maybe_uninit_extra)]
 #![feature(maybe_uninit_ref)]
 #![feature(link_args)]
 #![feature(lang_items)]
 #![feature(core_intrinsics)]
+#![feature(panic_info_message)]
 #![allow(unused_macros, dead_code)]
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate alloc;
 
@@ -23,6 +24,7 @@ mod io;
 
 mod allocator;
 mod env;
+mod executor;
 mod lang_items;
 mod logger;
 mod start;
@@ -31,16 +33,34 @@ mod syscalls;
 mod thread;
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{time::Duration, usize};
+use core::time::Duration;
 use env::Environment;
 use sync::Mutex;
 
 unsafe fn main(env: Environment) -> i8 {
-    if false {
-        alloc_test_main(env)
-    } else {
-        thread_test_main(env)
+    enum TestFunction {
+        Alloc,
+        ThreadingAndMutex,
+        Async,
     }
+
+    let test_function = TestFunction::ThreadingAndMutex;
+
+    match test_function {
+        TestFunction::Alloc => alloc_test_main(env),
+        TestFunction::ThreadingAndMutex => thread_test_main(env),
+        TestFunction::Async => async_test_main(env),
+    }
+}
+
+unsafe fn async_test_main(env: Environment) -> i8 {
+    let executor = executor::init(1);
+
+    executor.block_on(async_test_main_inner(env))
+}
+
+async fn async_test_main_inner(_env: Environment) -> i8 {
+    0
 }
 
 #[allow(clippy::many_single_char_names)]
@@ -118,7 +138,10 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
 
     info!("spawning...");
 
-    let data = Arc::new(Mutex::new(0));
+    // Safety: The Mutex is `Pin`ned by the `Arc::pin`.
+    let data = Arc::pin(Mutex::new(0));
+
+    // dbg!(data.deref() as *const _);
 
     let handles: Vec<_> = (0..N_THREADS)
         .into_iter()
@@ -128,6 +151,8 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
             thread::spawn(
                 move || {
                     info!("child {:X?}...", i);
+
+                    // dbg!(data.deref() as *const _);
 
                     for _ in 0..N_LOOPS {
                         *data.lock() += 1;
@@ -150,7 +175,7 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
     info!("parent waiting...");
 
     for handle in handles {
-        assert_eq!(handle.join(), 42);
+        assert_eq!(handle.join().unwrap(), 42);
     }
 
     info!("parent done");

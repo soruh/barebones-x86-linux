@@ -28,8 +28,10 @@ impl Write for StdErr {
     }
 }
 
+#[cfg(feature = "locked_stdio")]
 // Safety: static and are thus pinned
 pub static STD_OUT: Mutex<()> = unsafe { Mutex::new(()) };
+#[cfg(feature = "locked_stdio")]
 pub static STD_ERR: Mutex<()> = unsafe { Mutex::new(()) };
 
 macro_rules! print {
@@ -45,11 +47,13 @@ macro_rules! print {
 
 macro_rules! println {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
+        #[cfg(feature = "locked_stdio")]
         let lock = $crate::io::STD_OUT.lock();
 
         use ::core::fmt::Write;
         write!($crate::io::StdOut, concat!($format, "\n"), $($arg),*).expect("Failed to write to stdout");
 
+        #[cfg(feature = "locked_stdio")]
         drop(lock);
     }};
     () => {
@@ -70,11 +74,13 @@ macro_rules! eprint {
 
 macro_rules! eprintln {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
+        #[cfg(feature = "locked_stdio")]
         let lock = $crate::io::STD_ERR.lock();
 
         use ::core::fmt::Write;
         write!($crate::io::StdErr, concat!($format, "\n"), $($arg),*).expect("Failed to write to stderr");
 
+        #[cfg(feature = "locked_stdio")]
         drop(lock);
     }};
     () => {

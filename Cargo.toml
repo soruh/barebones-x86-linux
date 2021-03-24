@@ -15,3 +15,8 @@ debug = true
 bitflags = "1.2.1"
 compiler_builtins = { version = "0.1.39", features = ["mem"] }
 log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_trace"] }
+
+
+[features]
+default = ["locked_stdio"]
+locked_stdio = []

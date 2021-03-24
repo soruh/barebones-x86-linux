@@ -1,7 +1,10 @@
 use core::{fmt::Write, num::NonZeroUsize, str::Utf8Error};
 
-use crate::{sync::Mutex, syscalls::SyscallError};
-use alloc::{boxed::Box, string::String, vec::Vec};
+use crate::{
+    sync::{FutexMutexGuard, Mutex},
+    syscalls::SyscallError,
+};
+use alloc::string::String;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
@@ -44,6 +47,10 @@ impl Fd {
             }
 
             n_written_total += n_written;
+
+            if n_written_total == bytes.len() {
+                return Ok(n_written_total);
+            }
         }
     }
 
@@ -65,75 +72,77 @@ impl Fd {
             }
 
             n_read_total += n_read?.get();
+
+            if n_read_total == dest.len() {
+                return Ok(n_read_total);
+            }
         }
     }
 }
 
-pub struct StdOut;
+pub struct StdOut(Mutex<BufferedWriter<1024>>);
 
 impl StdOut {
     pub const FD: Fd = Fd(1);
-}
 
-impl Write for StdOut {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        if Self::FD.write_all(s.as_bytes()).is_ok() {
-            Ok(())
-        } else {
-            Err(core::fmt::Error)
-        }
+    // Safety: Self needs to be `Pin`ed in memory
+    pub const unsafe fn new() -> Self {
+        Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
 }
 
-pub struct StdErr;
+pub struct StdErr(Mutex<BufferedWriter<1024>>);
 
 impl StdErr {
     pub const FD: Fd = Fd(2);
-}
 
-impl Write for StdErr {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        if Self::FD.write_all(s.as_bytes()).is_ok() {
-            Ok(())
-        } else {
-            Err(core::fmt::Error)
-        }
+    // Safety: Self needs to be `Pin`ed in memory
+    pub const unsafe fn new() -> Self {
+        Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
 }
 
-pub struct StdIn;
+pub struct StdIn(Mutex<BufferedReader<1024>>);
 
 impl StdIn {
     pub const FD: Fd = Fd(0);
+
+    // Safety: Self needs to be `Pin`ed in memory
+    pub const unsafe fn new() -> Self {
+        Self(Mutex::new(BufferedReader::new(Self::FD)))
+    }
 }
 
-#[cfg(feature = "locked_stdio")]
-// Safety: static and are thus pinned
-pub static STD_OUT: Mutex<()> = unsafe { Mutex::new(()) };
-#[cfg(feature = "locked_stdio")]
-pub static STD_ERR: Mutex<()> = unsafe { Mutex::new(()) };
+// Safety: `Pin`ed, since they are statics
+pub static STD_OUT: StdOut = unsafe { StdOut::new() };
+pub static STD_ERR: StdErr = unsafe { StdErr::new() };
+pub static STD_IN: StdIn = unsafe { StdIn::new() };
+
+pub fn stdout() -> FutexMutexGuard<'static, BufferedWriter<1024>> {
+    STD_OUT.0.lock()
+}
+
+pub fn stderr() -> FutexMutexGuard<'static, BufferedWriter<1024>> {
+    STD_ERR.0.lock()
+}
+
+pub fn stdin() -> FutexMutexGuard<'static, BufferedReader<1024>> {
+    STD_IN.0.lock()
+}
 
 macro_rules! print {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
-        let lock = $crate::io::STD_OUT.lock();
-
         use ::core::fmt::Write;
-        write!($crate::io::StdOut, $format, $($arg)*).expect("Failed to write to stdout");
-
-        drop(lock);
+        let mut stdout = $crate::io::stdout();
+        write!(stdout, $format, $($arg)*).expect("Failed to write to stdout");
+        stdout.flush().expect("Failed to flush stdout");
     }};
 }
 
 macro_rules! println {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
-        #[cfg(feature = "locked_stdio")]
-        let lock = $crate::io::STD_OUT.lock();
-
         use ::core::fmt::Write;
-        write!($crate::io::StdOut, concat!($format, "\n"), $($arg),*).expect("Failed to write to stdout");
-
-        #[cfg(feature = "locked_stdio")]
-        drop(lock);
+        write!($crate::io::stdout(), concat!($format, "\n"), $($arg),*).expect("Failed to write to stdout");
     }};
     () => {
         println!("");
@@ -142,25 +151,17 @@ macro_rules! println {
 
 macro_rules! eprint {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
-        let lock = $crate::io::STD_ERR.lock();
-
         use ::core::fmt::Write;
-        write!($crate::io::StdErr, $format, $($arg)*).expect("Failed to write to stderr");
-
-        drop(lock);
+        let mut stderr = $crate::io::stderr();
+        write!(stderr, $format, $($arg)*).expect("Failed to write to stderr");
+        stderr.flush().expect("Failed to flush stderr");
     }};
 }
 
 macro_rules! eprintln {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
-        #[cfg(feature = "locked_stdio")]
-        let lock = $crate::io::STD_ERR.lock();
-
         use ::core::fmt::Write;
-        write!($crate::io::StdErr, concat!($format, "\n"), $($arg),*).expect("Failed to write to stderr");
-
-        #[cfg(feature = "locked_stdio")]
-        drop(lock);
+        write!($crate::io::stderr(), concat!($format, "\n"), $($arg),*).expect("Failed to write to stderr");
     }};
     () => {
         eprintln!("");
@@ -207,25 +208,17 @@ macro_rules! dbg_p {
     };
 }
 
-pub struct BufferedReader {
+pub struct BufferedReader<const BUFFER_SIZE: usize> {
     fd: Fd,
-    buffer: Box<[u8]>,
+    buffer: [u8; BUFFER_SIZE],
     cursor: usize,
 }
 
-impl BufferedReader {
-    pub fn new(fd: Fd) -> Self {
-        Self::with_size(fd, 1024)
-    }
-
-    pub fn with_size(fd: Fd, capacity: usize) -> Self {
-        assert!(capacity > 0);
-
-        let buffer: Vec<u8> = (0..capacity).map(|_| 0).collect();
-
+impl<const BUFFER_SIZE: usize> BufferedReader<BUFFER_SIZE> {
+    pub const fn new(fd: Fd) -> Self {
         Self {
             fd,
-            buffer: buffer.into_boxed_slice(),
+            buffer: [0; BUFFER_SIZE],
             cursor: 0,
         }
     }
@@ -249,7 +242,7 @@ impl BufferedReader {
                 self.cursor = self.cursor - i - 1;
 
                 break Ok(line);
-            } else if self.cursor < self.buffer.len() - 1 {
+            } else if self.cursor < BUFFER_SIZE - 1 {
                 let n_read = self.fill_buffer()?;
 
                 self.cursor += n_read.get();
@@ -257,16 +250,16 @@ impl BufferedReader {
         }
     }
 
-    pub fn lines(&mut self) -> Lines<'_> {
+    pub fn lines(&mut self) -> Lines<'_, BUFFER_SIZE> {
         Lines { reader: self }
     }
 }
 
-pub struct Lines<'reader> {
-    reader: &'reader mut BufferedReader,
+pub struct Lines<'reader, const BUFFER_SIZE: usize> {
+    reader: &'reader mut BufferedReader<BUFFER_SIZE>,
 }
 
-impl Iterator for Lines<'_> {
+impl<const BUFFER_SIZE: usize> Iterator for Lines<'_, BUFFER_SIZE> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -276,4 +269,74 @@ impl Iterator for Lines<'_> {
             Err(err) => panic!("failed to read line: {:?}", err),
         }
     }
+}
+
+pub struct BufferedWriter<const BUFFER_SIZE: usize> {
+    fd: Fd,
+    buffer: [u8; BUFFER_SIZE],
+    cursor: usize,
+}
+
+impl<const BUFFER_SIZE: usize> Drop for BufferedWriter<BUFFER_SIZE> {
+    fn drop(&mut self) {
+        self.flush().expect("Failed to flush BufferedWriter");
+    }
+}
+
+impl<const BUFFER_SIZE: usize> BufferedWriter<BUFFER_SIZE> {
+    pub const fn new(fd: Fd) -> Self {
+        Self {
+            fd,
+            buffer: [0; BUFFER_SIZE],
+            cursor: 0,
+        }
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> Result<()> {
+        let new_cursor = self.cursor + data.len();
+
+        if new_cursor <= BUFFER_SIZE {
+            self.buffer[self.cursor..new_cursor].copy_from_slice(data);
+
+            self.cursor = new_cursor;
+
+            if new_cursor == BUFFER_SIZE {
+                self.flush()?;
+            }
+        } else {
+            self.flush()?;
+            self.fd.write_all(data)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn flush(&mut self) -> Result<usize> {
+        if self.cursor > 0 {
+            let n = self.fd.write_all(&self.buffer[0..self.cursor])?;
+
+            self.cursor = 0;
+
+            Ok(n)
+        } else {
+            Ok(0)
+        }
+    }
+}
+
+impl<const BUFFER_SIZE: usize> Write for BufferedWriter<BUFFER_SIZE> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write(s.as_bytes()).map_err(|_| core::fmt::Error)?;
+
+        if s.contains('\n') {
+            self.flush().map_err(|_| core::fmt::Error)?;
+        }
+
+        Ok(())
+    }
+}
+
+pub fn cleanup() {
+    stdout().flush().expect("Failed to flush stdout");
+    stderr().flush().expect("Failed to flush stderr");
 }

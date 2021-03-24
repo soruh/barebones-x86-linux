@@ -646,6 +646,9 @@ impl AllocatorInner {
     }
 }
 
+// TODO: disallow terrible sizes?
+// 1 is very bad and very large sizes are also bad.
+// adjust MMAP_THRESHOLD to match
 pub fn prefered_chunk_size(layout: &Layout) -> usize {
     let n = layout.size() / layout.align();
 
@@ -657,6 +660,8 @@ impl Allocator {
         self.0.assume_init_ref().lock()
     }
 
+    // TODO: skip bytes which are 0
+    // optimise asm
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         // trace!("alloc: {:?}", layout);
 

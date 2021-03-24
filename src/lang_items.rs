@@ -1,4 +1,4 @@
-use crate::io::StdErr;
+use crate::io::stderr;
 use crate::syscalls::exit;
 
 #[panic_handler]
@@ -8,14 +8,15 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     // Discard the write result; We are already panicking...
     let _ = match (info.message(), info.location()) {
         (Some(message), Some(location)) => writeln!(
-            StdErr,
+            stderr(),
             "\x1b[31mpanicked\x1b[m at '{:?}', {}",
-            message, location
+            message,
+            location
         ),
-        (Some(message), None) => writeln!(StdErr, "\x1b[31mpanicked\x1b[m at '{}'", message),
-        (None, Some(location)) => writeln!(StdErr, "\x1b[31mpanicked\x1b[m at {}", location),
+        (Some(message), None) => writeln!(stderr(), "\x1b[31mpanicked\x1b[m at '{}'", message),
+        (None, Some(location)) => writeln!(stderr(), "\x1b[31mpanicked\x1b[m at {}", location),
 
-        _ => writeln!(StdErr, "\x1b[31mpanicked\x1b[m"),
+        _ => writeln!(stderr(), "\x1b[31mpanicked\x1b[m"),
     };
 
     unsafe { exit(1) }

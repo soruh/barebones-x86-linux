@@ -35,6 +35,7 @@ mod thread;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::time::Duration;
 use env::Environment;
+use io::stdin;
 use sync::Mutex;
 
 unsafe fn main(env: Environment) -> i8 {
@@ -66,10 +67,13 @@ async fn async_test_main_inner(_env: Environment) -> i8 {
 }
 
 unsafe fn user_input_main(_env: Environment) -> i8 {
-    let mut reader = io::BufferedReader::new(io::StdIn::FD);
+    println!("Hello, World!");
 
-    for line in reader.lines() {
+    print!("> ");
+    for line in stdin().lines() {
         dbg!(line);
+
+        print!("> ");
     }
 
     0

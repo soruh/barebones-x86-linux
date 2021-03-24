@@ -1,15 +1,83 @@
-use core::fmt::Write;
+use core::{fmt::Write, num::NonZeroUsize, str::Utf8Error};
 
-use crate::{sync::Mutex, syscalls::write_str};
+use crate::{sync::Mutex, syscalls::SyscallError};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
-const FD_STD_OUT: u32 = 0;
-const FD_STD_ERR: u32 = 1;
-const FD_STD_IN: u32 = 2;
+#[derive(Debug, Clone, Copy)]
+pub enum Error {
+    Syscall(SyscallError),
+    UnexpectedEOF,
+    InvalidUtf8(Utf8Error),
+}
+
+impl From<SyscallError> for Error {
+    fn from(err: SyscallError) -> Self {
+        Self::Syscall(err)
+    }
+}
+
+impl From<Utf8Error> for Error {
+    fn from(err: Utf8Error) -> Self {
+        Self::InvalidUtf8(err)
+    }
+}
+
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Fd(u32);
+impl Fd {
+    pub fn write(&self, bytes: &[u8]) -> Result<usize> {
+        unsafe {
+            let res = crate::syscalls::write(self.0, bytes.as_ptr(), bytes.len())?;
+            Ok(res)
+        }
+    }
+
+    pub fn write_all(&self, bytes: &[u8]) -> Result<usize> {
+        let mut n_written_total = 0;
+        loop {
+            let n_written = self.write(&bytes[n_written_total..])?;
+
+            if n_written == 0 {
+                return Ok(n_written_total);
+            }
+
+            n_written_total += n_written;
+        }
+    }
+
+    pub fn read(&self, dest: &mut [u8]) -> Result<NonZeroUsize> {
+        unsafe {
+            let res = crate::syscalls::read(self.0, dest.as_mut_ptr(), dest.len())?;
+
+            NonZeroUsize::new(res).ok_or(Error::UnexpectedEOF)
+        }
+    }
+
+    pub fn read_exact(&self, dest: &mut [u8]) -> Result<usize> {
+        let mut n_read_total = 0;
+        loop {
+            let n_read = self.read(&mut dest[n_read_total..]);
+
+            if let Err(Error::UnexpectedEOF) = n_read {
+                return Ok(n_read_total);
+            }
+
+            n_read_total += n_read?.get();
+        }
+    }
+}
 
 pub struct StdOut;
+
+impl StdOut {
+    pub const FD: Fd = Fd(1);
+}
+
 impl Write for StdOut {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        if write_str(FD_STD_OUT, s).is_ok() {
+        if Self::FD.write_all(s.as_bytes()).is_ok() {
             Ok(())
         } else {
             Err(core::fmt::Error)
@@ -18,14 +86,25 @@ impl Write for StdOut {
 }
 
 pub struct StdErr;
+
+impl StdErr {
+    pub const FD: Fd = Fd(2);
+}
+
 impl Write for StdErr {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        if write_str(FD_STD_ERR, s).is_ok() {
+        if Self::FD.write_all(s.as_bytes()).is_ok() {
             Ok(())
         } else {
             Err(core::fmt::Error)
         }
     }
+}
+
+pub struct StdIn;
+
+impl StdIn {
+    pub const FD: Fd = Fd(0);
 }
 
 #[cfg(feature = "locked_stdio")]
@@ -126,4 +205,75 @@ macro_rules! dbg_p {
     ($($val:expr),+ $(,)?) => {
         ($(dbg!($val)),+,)
     };
+}
+
+pub struct BufferedReader {
+    fd: Fd,
+    buffer: Box<[u8]>,
+    cursor: usize,
+}
+
+impl BufferedReader {
+    pub fn new(fd: Fd) -> Self {
+        Self::with_size(fd, 1024)
+    }
+
+    pub fn with_size(fd: Fd, capacity: usize) -> Self {
+        assert!(capacity > 0);
+
+        let buffer: Vec<u8> = (0..capacity).map(|_| 0).collect();
+
+        Self {
+            fd,
+            buffer: buffer.into_boxed_slice(),
+            cursor: 0,
+        }
+    }
+
+    fn fill_buffer(&mut self) -> Result<NonZeroUsize> {
+        self.fd.read(&mut self.buffer[self.cursor..])
+    }
+
+    pub fn read_line(&mut self) -> Result<String> {
+        loop {
+            // TODO: checking the byte for \n might cause utf-8 problems
+            if let Some((i, _)) = self.buffer[..self.cursor]
+                .iter()
+                .enumerate()
+                .find(|(_, &x)| x == b'\n')
+            {
+                let line: String = core::str::from_utf8(&self.buffer[..=i])?.into();
+
+                self.buffer.copy_within(i..self.cursor, 0);
+
+                self.cursor = self.cursor - i - 1;
+
+                break Ok(line);
+            } else if self.cursor < self.buffer.len() - 1 {
+                let n_read = self.fill_buffer()?;
+
+                self.cursor += n_read.get();
+            }
+        }
+    }
+
+    pub fn lines(&mut self) -> Lines<'_> {
+        Lines { reader: self }
+    }
+}
+
+pub struct Lines<'reader> {
+    reader: &'reader mut BufferedReader,
+}
+
+impl Iterator for Lines<'_> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.reader.read_line() {
+            Ok(res) => Some(res),
+            Err(Error::UnexpectedEOF) => None,
+            Err(err) => panic!("failed to read line: {:?}", err),
+        }
+    }
 }

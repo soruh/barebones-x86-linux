@@ -185,6 +185,7 @@ macro_rules! syscall_inner {
 }
 
 #[repr(transparent)]
+#[derive(Clone, Copy)]
 pub struct SyscallError(pub usize);
 
 pub type SyscallResult<T> = Result<T, SyscallError>;

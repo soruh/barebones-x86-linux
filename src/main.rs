@@ -42,14 +42,16 @@ unsafe fn main(env: Environment) -> i8 {
         Alloc,
         ThreadingAndMutex,
         Async,
+        UserInput,
     }
 
-    let test_function = TestFunction::ThreadingAndMutex;
+    let test_function = TestFunction::UserInput;
 
     match test_function {
         TestFunction::Alloc => alloc_test_main(env),
         TestFunction::ThreadingAndMutex => thread_test_main(env),
         TestFunction::Async => async_test_main(env),
+        TestFunction::UserInput => user_input_main(env),
     }
 }
 
@@ -60,6 +62,16 @@ unsafe fn async_test_main(env: Environment) -> i8 {
 }
 
 async fn async_test_main_inner(_env: Environment) -> i8 {
+    0
+}
+
+unsafe fn user_input_main(_env: Environment) -> i8 {
+    let mut reader = io::BufferedReader::new(io::StdIn::FD);
+
+    for line in reader.lines() {
+        dbg!(line);
+    }
+
     0
 }
 

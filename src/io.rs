@@ -32,7 +32,7 @@ pub struct Fd(u32);
 impl Fd {
     pub fn write(&self, bytes: &[u8]) -> Result<usize> {
         unsafe {
-            let res = crate::syscalls::write(self.0, bytes.as_ptr(), bytes.len())?;
+            let res = crate::syscalls::write(self.0, bytes)?;
             Ok(res)
         }
     }
@@ -56,7 +56,7 @@ impl Fd {
 
     pub fn read(&self, dest: &mut [u8]) -> Result<NonZeroUsize> {
         unsafe {
-            let res = crate::syscalls::read(self.0, dest.as_mut_ptr(), dest.len())?;
+            let res = crate::syscalls::read(self.0, dest)?;
 
             NonZeroUsize::new(res).ok_or(Error::UnexpectedEOF)
         }

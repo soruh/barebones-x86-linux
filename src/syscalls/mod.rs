@@ -1,4 +1,3 @@
-// TODO: write safe wrappers here?
 #[macro_use]
 pub mod helper;
 pub mod raw;
@@ -7,6 +6,15 @@ use core::{ptr::null_mut, sync::atomic::AtomicU32};
 pub use raw::*;
 
 pub use helper::{SyscallError, SyscallResult};
+
+// TODO: do these need to be `unsafe`?
+pub unsafe fn read(fd: u32, buf: &mut [u8]) -> SyscallResult<usize> {
+    raw::read(fd, buf.as_mut_ptr(), buf.len())
+}
+
+pub unsafe fn write(fd: u32, buf: &[u8]) -> SyscallResult<usize> {
+    raw::write(fd, buf.as_ptr(), buf.len())
+}
 
 #[repr(i32)]
 pub enum FutexOp {

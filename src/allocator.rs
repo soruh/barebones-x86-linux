@@ -442,13 +442,16 @@ static mut GLOBAL_ALLOCATOR: Allocator = Allocator(MaybeUninit::uninit());
 /// *must* be called before *any* allocations are made (probably in _start)
 /// *must* be called exactly once
 pub unsafe fn init() -> SyscallResult<()> {
-    let base = syscalls::brk(core::ptr::null())?;
+    let mut base = syscalls::brk(core::ptr::null())?;
 
     let align_offset = base.align_offset(ALLOCATOR_ALIGN);
 
     // Align base to `ALLOCATOR_ALIGN`
-    let base = base.add(align_offset);
-    syscalls::brk(base)?;
+    let new_base = base.add(align_offset);
+    if new_base != base {
+        base = new_base;
+        syscalls::brk(base)?;
+    }
 
     let base = base as *mut Block;
 

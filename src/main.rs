@@ -69,7 +69,7 @@ fn ncpu() -> io::Result<usize> {
         OpenFlags::empty(),
         OpenMode::RDONLY,
     )?
-    .buffer::<1024>();
+    .buffer::<512>();
 
     for line in file.inline_lines::<128>() {
         if let Some(siblings) = line?.strip_prefix("siblings\t: ") {
@@ -81,9 +81,9 @@ fn ncpu() -> io::Result<usize> {
 }
 
 unsafe fn fs_test_main(_env: Environment) -> i8 {
-    let n = ncpu().unwrap();
+    let ncpu = ncpu().unwrap();
 
-    dbg!(n);
+    dbg!(ncpu);
 
     0
 }

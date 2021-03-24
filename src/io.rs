@@ -206,6 +206,7 @@ macro_rules! dbg_p {
     };
 }
 
+// TODO: make these Ring buffers?
 pub struct BufferedReader<const BUFFER_SIZE: usize> {
     fd: Fd,
     buffer: [u8; BUFFER_SIZE],

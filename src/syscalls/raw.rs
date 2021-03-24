@@ -4,6 +4,8 @@ use core::{hint::unreachable_unchecked, sync::atomic::AtomicU32};
 
 pub const SYS_NO_READ: usize = 0;
 pub const SYS_NO_WRITE: usize = 1;
+pub const SYS_NO_OPEN: usize = 2;
+pub const SYS_NO_CLOSE: usize = 3;
 pub const SYS_NO_MMAP: usize = 9;
 pub const SYS_NO_MUNMAP: usize = 11;
 pub const SYS_NO_BRK: usize = 12;
@@ -22,6 +24,13 @@ pub unsafe fn read(fd: u32, buf: *mut u8, count: usize) -> SyscallResult<usize> 
 
 pub unsafe fn write(fd: u32, buf: *const u8, count: usize) -> SyscallResult<usize> {
     syscall!(SYS_NO_WRITE, fd, buf, count)
+}
+
+pub unsafe fn open(filename: *const u8, flags: i32, mode: i32) -> SyscallResult<usize> {
+    syscall!(SYS_NO_OPEN, filename, flags, mode)
+}
+pub unsafe fn close(fd: u32) -> SyscallResult<usize> {
+    syscall!(SYS_NO_CLOSE, fd)
 }
 
 bitflags! {

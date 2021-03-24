@@ -624,7 +624,7 @@ impl AllocatorInner {
             trace!(
                 "Allocated {} block{} ({} reused) with {} ({} useable | \x1b[{}m{:.1}%\x1b[m loss) {} byte chunk{}, aligned to {} bits",
                 requested,
-                ordinal_s(n),
+                ordinal_s(requested),
                 requested - n,
                 n_chunks,
                 n_useable,

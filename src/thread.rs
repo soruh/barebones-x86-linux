@@ -56,7 +56,7 @@ impl<T> Drop for JoinHandle<T> {
         if strong_count > 2 {
             // NOTE: we need to do this, since we need to free the threads stack
             // TODO: is there a way for the thread to free it's own thread?
-            panic!("dropped a JoinHandle while the thread was still running. Either `join` or `core::mem::forget` it. (forgeting it leaks its stack.)");
+            panic!("dropped a JoinHandle while the thread was still running. Either `join` or `leak` it. (forgeting it leaks its stack.)");
         }
     }
 }

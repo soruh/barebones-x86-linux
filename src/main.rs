@@ -8,6 +8,8 @@
 #![feature(lang_items)]
 #![feature(core_intrinsics)]
 #![feature(panic_info_message)]
+#![feature(array_methods)]
+#![feature(const_mut_refs)]
 #![allow(unused_macros, dead_code)]
 
 #[allow(unused_imports)]
@@ -21,10 +23,12 @@ extern crate log;
 
 #[macro_use]
 mod io;
-
+#[macro_use]
+mod ffi;
 mod allocator;
 mod env;
 mod executor;
+mod fs;
 mod lang_items;
 mod logger;
 mod start;
@@ -37,6 +41,7 @@ use core::time::Duration;
 use env::Environment;
 use io::stdin;
 use sync::Mutex;
+use syscalls::{OpenFlags, OpenMode};
 
 unsafe fn main(env: Environment) -> i8 {
     enum TestFunction {
@@ -44,16 +49,43 @@ unsafe fn main(env: Environment) -> i8 {
         ThreadingAndMutex,
         Async,
         UserInput,
+        FsTest,
     }
 
-    let test_function = TestFunction::UserInput;
+    let test_function = TestFunction::FsTest;
 
     match test_function {
         TestFunction::Alloc => alloc_test_main(env),
         TestFunction::ThreadingAndMutex => thread_test_main(env),
         TestFunction::Async => async_test_main(env),
         TestFunction::UserInput => user_input_main(env),
+        TestFunction::FsTest => fs_test_main(env),
     }
+}
+
+fn ncpu() -> io::Result<usize> {
+    let mut file = fs::File::open(
+        const_cstr!("/proc/cpuinfo"),
+        OpenFlags::empty(),
+        OpenMode::RDONLY,
+    )?
+    .buffer::<1024>();
+
+    for line in file.inline_lines::<128>() {
+        if let Some(siblings) = line?.strip_prefix("siblings\t: ") {
+            return Ok(siblings.strip_suffix("\n").unwrap().parse().unwrap());
+        }
+    }
+
+    unreachable!("/proc/cpuinfo did not contain siblings")
+}
+
+unsafe fn fs_test_main(_env: Environment) -> i8 {
+    let n = ncpu().unwrap();
+
+    dbg!(n);
+
+    0
 }
 
 unsafe fn async_test_main(env: Environment) -> i8 {
@@ -71,6 +103,8 @@ unsafe fn user_input_main(_env: Environment) -> i8 {
 
     print!("> ");
     for line in stdin().lines() {
+        let line = line.unwrap();
+
         dbg!(line);
 
         print!("> ");

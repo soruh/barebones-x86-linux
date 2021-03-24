@@ -5,6 +5,7 @@ use crate::{
     syscalls::SyscallError,
 };
 use alloc::string::String;
+use smallstr::SmallString;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
@@ -28,13 +29,10 @@ impl From<Utf8Error> for Error {
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Fd(u32);
+pub struct Fd(pub u32);
 impl Fd {
     pub fn write(&self, bytes: &[u8]) -> Result<usize> {
-        unsafe {
-            let res = crate::syscalls::write(self.0, bytes)?;
-            Ok(res)
-        }
+        Ok(crate::syscalls::write(self.0, bytes)?)
     }
 
     pub fn write_all(&self, bytes: &[u8]) -> Result<usize> {
@@ -55,11 +53,7 @@ impl Fd {
     }
 
     pub fn read(&self, dest: &mut [u8]) -> Result<NonZeroUsize> {
-        unsafe {
-            let res = crate::syscalls::read(self.0, dest)?;
-
-            NonZeroUsize::new(res).ok_or(Error::UnexpectedEOF)
-        }
+        NonZeroUsize::new(crate::syscalls::read(self.0, dest)?).ok_or(Error::UnexpectedEOF)
     }
 
     pub fn read_exact(&self, dest: &mut [u8]) -> Result<usize> {
@@ -80,7 +74,11 @@ impl Fd {
     }
 }
 
-pub struct StdOut(Mutex<BufferedWriter<1024>>);
+const STD_OUT_BUFFER_SIZE: usize = 8192;
+const STD_ERR_BUFFER_SIZE: usize = 8192;
+const STD_IN_BUFFER_SIZE: usize = 8192;
+
+pub struct StdOut(Mutex<BufferedWriter<STD_OUT_BUFFER_SIZE>>);
 
 impl StdOut {
     pub const FD: Fd = Fd(1);
@@ -91,7 +89,7 @@ impl StdOut {
     }
 }
 
-pub struct StdErr(Mutex<BufferedWriter<1024>>);
+pub struct StdErr(Mutex<BufferedWriter<STD_ERR_BUFFER_SIZE>>);
 
 impl StdErr {
     pub const FD: Fd = Fd(2);
@@ -102,7 +100,7 @@ impl StdErr {
     }
 }
 
-pub struct StdIn(Mutex<BufferedReader<1024>>);
+pub struct StdIn(Mutex<BufferedReader<STD_IN_BUFFER_SIZE>>);
 
 impl StdIn {
     pub const FD: Fd = Fd(0);
@@ -118,15 +116,15 @@ pub static STD_OUT: StdOut = unsafe { StdOut::new() };
 pub static STD_ERR: StdErr = unsafe { StdErr::new() };
 pub static STD_IN: StdIn = unsafe { StdIn::new() };
 
-pub fn stdout() -> FutexMutexGuard<'static, BufferedWriter<1024>> {
+pub fn stdout() -> FutexMutexGuard<'static, BufferedWriter<STD_OUT_BUFFER_SIZE>> {
     STD_OUT.0.lock()
 }
 
-pub fn stderr() -> FutexMutexGuard<'static, BufferedWriter<1024>> {
+pub fn stderr() -> FutexMutexGuard<'static, BufferedWriter<STD_ERR_BUFFER_SIZE>> {
     STD_ERR.0.lock()
 }
 
-pub fn stdin() -> FutexMutexGuard<'static, BufferedReader<1024>> {
+pub fn stdin() -> FutexMutexGuard<'static, BufferedReader<STD_IN_BUFFER_SIZE>> {
     STD_IN.0.lock()
 }
 
@@ -227,7 +225,7 @@ impl<const BUFFER_SIZE: usize> BufferedReader<BUFFER_SIZE> {
         self.fd.read(&mut self.buffer[self.cursor..])
     }
 
-    pub fn read_line(&mut self) -> Result<String> {
+    pub fn read_line(&mut self, line: &mut String) -> Result<()> {
         loop {
             // TODO: checking the byte for \n might cause utf-8 problems
             if let Some((i, _)) = self.buffer[..self.cursor]
@@ -235,23 +233,60 @@ impl<const BUFFER_SIZE: usize> BufferedReader<BUFFER_SIZE> {
                 .enumerate()
                 .find(|(_, &x)| x == b'\n')
             {
-                let line: String = core::str::from_utf8(&self.buffer[..=i])?.into();
+                let i = i + 1;
+                line.push_str(core::str::from_utf8(&self.buffer[..i])?);
 
                 self.buffer.copy_within(i..self.cursor, 0);
 
-                self.cursor = self.cursor - i - 1;
+                self.cursor -= i;
 
-                break Ok(line);
+                break Ok(());
             } else if self.cursor < BUFFER_SIZE - 1 {
                 let n_read = self.fill_buffer()?;
 
                 self.cursor += n_read.get();
+            } else {
+                todo!("line is longer than buffer size");
+            }
+        }
+    }
+    pub fn read_line_inline<const N_INLINE: usize>(
+        &mut self,
+        line: &mut SmallString<[u8; N_INLINE]>,
+    ) -> Result<()> {
+        loop {
+            // TODO: checking the byte for \n might cause utf-8 problems
+            if let Some((i, _)) = self.buffer[..self.cursor]
+                .iter()
+                .enumerate()
+                .find(|(_, &x)| x == b'\n')
+            {
+                let i = i + 1;
+                line.push_str(core::str::from_utf8(&self.buffer[..i])?);
+
+                self.buffer.copy_within(i..self.cursor, 0);
+
+                self.cursor -= i;
+
+                break Ok(());
+            } else if self.cursor < BUFFER_SIZE - 1 {
+                let n_read = self.fill_buffer()?;
+
+                self.cursor += n_read.get();
+            } else {
+                todo!("line is longer than buffer size");
             }
         }
     }
 
     pub fn lines(&mut self) -> Lines<'_, BUFFER_SIZE> {
         Lines { reader: self }
+    }
+
+    pub fn inline_lines<const LINE_SIZE: usize>(
+        &mut self,
+    ) -> InlineLines<'_, BUFFER_SIZE, LINE_SIZE> {
+        InlineLines { reader: self }
     }
 }
 
@@ -260,13 +295,31 @@ pub struct Lines<'reader, const BUFFER_SIZE: usize> {
 }
 
 impl<const BUFFER_SIZE: usize> Iterator for Lines<'_, BUFFER_SIZE> {
-    type Item = String;
+    type Item = Result<String>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.reader.read_line() {
-            Ok(res) => Some(res),
+        let mut line = String::new();
+        match self.reader.read_line(&mut line) {
             Err(Error::UnexpectedEOF) => None,
-            Err(err) => panic!("failed to read line: {:?}", err),
+            res => Some(res.map(|_| line)),
+        }
+    }
+}
+
+pub struct InlineLines<'reader, const BUFFER_SIZE: usize, const LINE_SIZE: usize> {
+    reader: &'reader mut BufferedReader<BUFFER_SIZE>,
+}
+
+impl<const BUFFER_SIZE: usize, const LINE_SIZE: usize> Iterator
+    for InlineLines<'_, BUFFER_SIZE, LINE_SIZE>
+{
+    type Item = Result<SmallString<[u8; LINE_SIZE]>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut line = SmallString::new();
+        match self.reader.read_line_inline(&mut line) {
+            Err(Error::UnexpectedEOF) => None,
+            res => Some(res.map(|_| line)),
         }
     }
 }

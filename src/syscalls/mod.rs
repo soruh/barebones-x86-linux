@@ -8,10 +8,6 @@ pub use raw::*;
 
 pub use helper::{SyscallError, SyscallResult};
 
-pub fn write_str(fd: u32, s: &str) -> SyscallResult<usize> {
-    unsafe { write(fd, s.as_ptr(), s.len()) }
-}
-
 #[repr(i32)]
 pub enum FutexOp {
     Wait = 0,

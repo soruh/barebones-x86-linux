@@ -13,7 +13,8 @@ pub struct SpinMutex<T> {
 }
 
 impl<T: Send + Sync> SpinMutex<T> {
-    pub fn new(data: T) -> Self {
+    /// Safety: needs to be `Pin`ed
+    pub unsafe fn new(data: T) -> Self {
         Self {
             is_locked: false.into(),
             data,

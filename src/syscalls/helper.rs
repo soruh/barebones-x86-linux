@@ -13,7 +13,6 @@ macro_rules! syscall0 {
         asm!(
             "syscall",
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -30,7 +29,6 @@ macro_rules! syscall1 {
             "syscall",
             in("rdi") $arg1,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -48,7 +46,6 @@ macro_rules! syscall2 {
             in("rdi") $arg1,
             in("rsi") $arg2,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -67,7 +64,6 @@ macro_rules! syscall3 {
             in("rsi") $arg2,
             in("rdx") $arg3,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -87,7 +83,6 @@ macro_rules! syscall4 {
             in("rdx") $arg3,
             in("r10") $arg4,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -108,7 +103,6 @@ macro_rules! syscall5 {
             in("r10") $arg4,
             in("r8") $arg5,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );
@@ -130,7 +124,6 @@ macro_rules! syscall6 {
             in("r8") $arg5,
             in("r9") $arg6,
             inlateout("rax") $syscall_no => ret,
-            lateout("rdx") _,
             lateout("rcx") _,
             lateout("r11") _,
         );

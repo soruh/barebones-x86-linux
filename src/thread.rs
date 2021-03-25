@@ -1,5 +1,6 @@
 use core::{
     cell::UnsafeCell,
+    hint::unreachable_unchecked,
     marker::PhantomPinned,
     mem::ManuallyDrop,
     pin::Pin,
@@ -9,7 +10,7 @@ use core::{
 
 use crate::syscalls::{self, futex_wait};
 use alloc::{boxed::Box, sync::Arc};
-use syscalls::{CloneArgs, CloneFlags, SyscallResult};
+use syscalls::{gettid, CloneArgs, CloneFlags, SyscallResult};
 
 struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
@@ -136,35 +137,55 @@ where
         inner: inner.clone(),
     });
 
-    // uncomment and add pointer to CloneArgs to provide child tid in child memory
-    // let child_tid_ptr = (&mut payload.child_tid) as *mut u32;
-
     let payload_ptr = Box::into_raw(payload);
 
-    // Store thread owned data in `r12`
-    asm!("mov r12, {}", in(reg) payload_ptr, out("r12") _);
-
     let child_tid = syscalls::clone3(
-        || {
-            let payload_ptr: *mut Payload<T, F>;
+        |payload_ptr: *mut ()| -> ! {
+            let (child_stack_allocation, allocated_size) = {
+                let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr as *mut Payload<T, F>);
 
-            // Restore thread owned data from `r12`
-            asm!("mov {}, r12", out(reg) payload_ptr);
+                // Call the provided closure
+                let res = (payload.closure)();
 
-            let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr);
+                // Write result to return value
+                *payload.inner.data.get() = Some(res);
 
-            // Call the provided closure
-            let res = (payload.closure)();
+                (
+                    payload.inner.child_stack_allocation,
+                    payload.inner.allocated_size,
+                )
+            };
 
-            // Write result to return value
-            *payload.inner.data.get() = Some(res);
+            // ATTENTION: We're going to unmap our own stack !
+            // after this we **must not** touch the stack (or we **will** SegFault)
+            // because of this we're going to do all the syscalls by hand.
+            // !!!DANGER PAST THIS POINT!!!
 
-            (
-                0,
-                payload.inner.child_stack_allocation,
-                payload.inner.allocated_size,
-            )
+            // munmap our stack
+            // NOTE: we currently ignore if this fails because for it to fail
+            // we would need to be running in unmapped memory and would already
+            // have SegFaulted...
+            asm!(
+                "syscall",
+                in("rdi") child_stack_allocation,
+                in("rsi") allocated_size,
+                inlateout("rax") crate::syscalls::raw::SYS_NO_MUNMAP => _,
+                lateout("rdx") _,
+                lateout("rcx") _,
+                lateout("r11") _,
+            );
+
+            // exit(0)
+            // NOTE: if we wanted to return with a code specified by the user
+            // we would need to temporarily save it in a register just before munmap-ing
+            // and restore it into rdi here.
+            // (because otherwise we would read from the stack we just unmapped)
+            asm!("syscall", in("rax") crate::syscalls::raw::SYS_NO_EXIT, in("rdi") 0);
+
+            // exit does not return so we can't get here
+            unreachable_unchecked()
         },
+        payload_ptr as *mut (),
         CloneArgs {
             flags: CloneFlags::IO
                 | CloneFlags::FS

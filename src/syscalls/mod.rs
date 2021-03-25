@@ -1,7 +1,7 @@
 #[macro_use]
 pub mod helper;
 pub mod raw;
-use core::{hint::unreachable_unchecked, ptr::null_mut, sync::atomic::AtomicU32};
+use core::{ptr::null_mut, sync::atomic::AtomicU32};
 
 pub use raw::*;
 
@@ -114,61 +114,83 @@ pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> 
     )
 }
 
+// Safety:
+// - r12 needs to contain a f: `unsafe fn(*mut ()) -> !`
+// - r13 needs to contain a user_data: *mut () that is valid as an argument to f
+// - realigns the stack
+unsafe extern "C" fn clone_callback() -> ! {
+    // NOTE: We are a thread that was just spawned
+
+    // align the stack pointer
+    asm!("and rsp, 0xfffffffffffffff0");
+
+    // retore data the parent saved for us
+    let f: unsafe fn(*mut ()) -> !;
+    asm!("mov {}, r12", out(reg) f);
+
+    let user_data: *mut ();
+    asm!("mov {}, r13", out(reg) user_data);
+
+    f(user_data)
+}
+
+#[inline(never)]
+#[naked]
+// Safety: arguments to clone3 are expected to already be in rdi and rsi
+// NOTE:
+unsafe extern "C" fn clone_proxy() -> isize {
+    asm!(
+        "mov rax, {}",
+        "syscall",
+        // This is the point where exection splits.
+        // We use the fact that the thread has a different stack to return
+        // to its handler if we are the thread (the value at the top of its stack),
+        // or to the clone function if we are the parent
+        "ret",
+        const crate::syscalls::raw::SYS_NO_CLONE3,
+        options(noreturn)
+    )
+}
+
 #[inline(never)]
 #[allow(clippy::comparison_chain)]
 pub unsafe fn clone3(
-    f: unsafe fn() -> (i8, *mut u8, usize),
+    f: unsafe fn(*mut ()) -> !,
+    user_data: *mut (),
     args: CloneArgs,
 ) -> SyscallResult<u32> {
-    // asm!("int3");
+    let stack_top = args.stack.add(args.stack_size) as *mut usize;
 
-    asm!("mov r13, {}", in(reg) f, lateout("r13") _);
+    // Write the address the thread should jump to to it's stack
+    *stack_top = clone_callback as *const () as usize;
 
-    let res = raw::clone3(&args as *const _, core::mem::size_of::<CloneArgs>());
-    if res == 0 {
-        let f: unsafe fn() -> (i8, *mut u8, usize);
+    // save thread handler to r12 and user data to r13
 
-        asm!("mov {}, r13", out(reg) f);
+    asm!(
+        "mov r12, {}",
+        "mov r13, {}",
+        in(reg) f,
+        in(reg) user_data,
+    );
 
-        let (ret, child_stack, child_stack_size) = f();
+    // write `clone3` arguments to rdi and rsi as expected by `clone_proxy`
+    asm!(
+        "mov rdi, {}",
+        "mov rsi, {}",
+        in(reg) &args as *const _,
+        in(reg) core::mem::size_of::<CloneArgs>(),
+    );
 
-        // We're going to deallocate our own stack!
-        // after this we **must not** touch the stack
-        // because of this we're going to do all the syscalls by hand
-        //
+    // Clone and direct thread to registered handler
+    let res: isize = clone_proxy();
 
-        // load the return value into a register so that we can
-        // use it without touching the stack
-        asm!("mov r13, {}", in(reg) ret as isize);
+    // NOTE: we are the parent
 
-        // Munmap
-        asm!(
-            "syscall",
-            in("rdi") child_stack,
-            in("rsi") child_stack_size,
-            inlateout("rax") crate::syscalls::raw::SYS_NO_MUNMAP => _,
-            lateout("rdx") _,
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-
-        // Load return value from r13 into exit syscall argument register
-        asm!("mov rdi, r13");
-
-        // Exit
-        asm!(
-            "syscall",
-            inlateout("rax") crate::syscalls::raw::SYS_NO_EXIT => _,
-            lateout("rdx") _,
-            lateout("rcx") _,
-            lateout("r11") _,
-        );
-
-        // We just exited
-        unreachable_unchecked();
-    } else if res < 0 {
-        Err(SyscallError(-res as usize))
+    if res < 0 {
+        Err(SyscallError((-res) as usize))
     } else {
+        debug_assert_ne!(res, 0);
+
         Ok(res as u32)
     }
 }

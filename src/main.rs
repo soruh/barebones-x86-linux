@@ -92,7 +92,9 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
 
             // syscalls::sleep(Duration::from_secs(60)).unwrap();
 
-            // panic!();
+            debug!("I am the thread!");
+
+            // panic!("end of thread");
         },
         1024 * 1024,
     )

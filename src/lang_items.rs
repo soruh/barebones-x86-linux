@@ -47,6 +47,7 @@ unsafe fn eh_personality() {
     asm!("ud2");
 }
 
+#[allow(non_snake_case)]
 #[no_mangle]
 unsafe extern "C" fn _Unwind_Resume() {
     asm!("ud2");

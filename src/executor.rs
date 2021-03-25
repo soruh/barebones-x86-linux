@@ -207,7 +207,7 @@ pub fn init(n_threads: usize) -> Executor {
     let workers = unsafe { Arc::pin(Mutex::new(Vec::with_capacity(n_threads))) };
 
     for i in 0..n_threads {
-        // Safety: the Arc `Pin`s the Mutex
+        //Safety: the Arc `Pin`s the Mutex
         let queue = unsafe { Arc::pin(Mutex::new(Some(LinkedList::new()))) };
 
         let handle = {

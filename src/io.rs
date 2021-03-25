@@ -83,7 +83,7 @@ pub struct StdOut(Mutex<BufferedWriter<STD_OUT_BUFFER_SIZE>>);
 impl StdOut {
     pub const FD: Fd = Fd(1);
 
-    /// Safety: Self needs to be `Pin`ed in memory
+    //// # Safety: Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
@@ -94,7 +94,7 @@ pub struct StdErr(Mutex<BufferedWriter<STD_ERR_BUFFER_SIZE>>);
 impl StdErr {
     pub const FD: Fd = Fd(2);
 
-    /// Safety: Self needs to be `Pin`ed in memory
+    //// # Safety: Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
@@ -105,13 +105,13 @@ pub struct StdIn(Mutex<BufferedReader<STD_IN_BUFFER_SIZE>>);
 impl StdIn {
     pub const FD: Fd = Fd(0);
 
-    /// Safety: Self needs to be `Pin`ed in memory
+    //// # Safety: Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedReader::new(Self::FD)))
     }
 }
 
-// Safety: `Pin`ed, since they are statics
+/// # Safety: `Pin`ed, since they are statics
 pub static STD_OUT: StdOut = unsafe { StdOut::new() };
 pub static STD_ERR: StdErr = unsafe { StdErr::new() };
 pub static STD_IN: StdIn = unsafe { StdIn::new() };

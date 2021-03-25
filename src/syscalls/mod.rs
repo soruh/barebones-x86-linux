@@ -114,7 +114,7 @@ pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> 
     )
 }
 
-// Safety:
+/// # Safety:
 // - r12 needs to contain a f: `unsafe fn(*mut ()) -> !`
 // - r13 needs to contain a user_data: *mut () that is valid as an argument to f
 // - realigns the stack
@@ -136,7 +136,7 @@ unsafe extern "C" fn clone_callback() -> ! {
 
 #[inline(never)]
 #[naked]
-// Safety: arguments to clone3 are expected to already be in rdi and rsi
+/// # Safety: arguments to clone3 are expected to already be in rdi and rsi
 // NOTE:
 unsafe extern "C" fn clone_proxy() -> isize {
     asm!(
@@ -152,14 +152,19 @@ unsafe extern "C" fn clone_proxy() -> isize {
     )
 }
 
+/// sets the supplied stack up so that the clone will call `f` with the supplied `user_data`
+/// and then executes the clone3 syscall with the supplied `clone_args`.
+///
+/// # Safety:
+/// - CloneArgs::VM must be set
+/// - arguments must be valid for a call to `clone`
 #[inline(never)]
-#[allow(clippy::comparison_chain)]
-pub unsafe fn clone3(
+pub unsafe fn clone3_vm_safe(
     f: unsafe fn(*mut ()) -> !,
     user_data: *mut (),
-    args: CloneArgs,
+    clone_args: CloneArgs,
 ) -> SyscallResult<u32> {
-    let stack_top = args.stack.add(args.stack_size) as *mut usize;
+    let stack_top = clone_args.stack.add(clone_args.stack_size) as *mut usize;
 
     // Write the address the thread should jump to to it's stack
     *stack_top = clone_callback as *const () as usize;
@@ -177,7 +182,7 @@ pub unsafe fn clone3(
     asm!(
         "mov rdi, {}",
         "mov rsi, {}",
-        in(reg) &args as *const _,
+        in(reg) &clone_args as *const _,
         in(reg) core::mem::size_of::<CloneArgs>(),
     );
 

@@ -13,7 +13,7 @@ pub struct SpinMutex<T> {
 }
 
 impl<T: Send + Sync> SpinMutex<T> {
-    /// Safety: needs to be `Pin`ed
+    //// # Safety: needs to be `Pin`ed
     pub unsafe fn new(data: T) -> Self {
         Self {
             is_locked: false.into(),
@@ -81,7 +81,7 @@ unsafe impl<T, const N: usize> Send for FutexMutex<T, N> where T: Send {}
 unsafe impl<T, const N: usize> Sync for FutexMutex<T, N> where T: Sync {}
 
 impl<T, const N: usize> FutexMutex<T, N> {
-    /// Safety: must be pinned
+    //// # Safety: must be pinned
     pub const unsafe fn new(data: T) -> Self {
         FutexMutex {
             is_locked: AtomicU32::new(0),

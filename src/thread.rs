@@ -10,7 +10,7 @@ use core::{
 
 use crate::syscalls::{self, futex_wait};
 use alloc::{boxed::Box, sync::Arc};
-use syscalls::{gettid, CloneArgs, CloneFlags, SyscallResult};
+use syscalls::{CloneArgs, CloneFlags, SyscallResult};
 
 struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
@@ -34,10 +34,9 @@ impl<T: Send + Sync> JoinHandle<T> {
     pub fn join(self) -> SyscallResult<T> {
         loop {
             if self.inner.child_tid_futex.load(Ordering::Relaxed) == 0 {
-                // Safety:
-                // The child has exited
-                // return the result
-                // Safety: we can take ownership of the data here, since:
+                // The child has exited -> return the result
+
+                // Safety: we can take ownership of the data here since:
                 // - the thread has exited (=> we have exclusive access)
                 // - the data is `ManuallyDrop` so it will not be droppped twice.
                 unsafe {
@@ -80,7 +79,7 @@ impl<T: Send + Sync> JoinHandle<T> {
     }
 }
 
-/// Safety: the provided stack size must be big enough
+//// # Safety: the provided stack size must be big enough
 pub unsafe fn spawn<T, F>(f: F, stack_size: usize) -> SyscallResult<JoinHandle<T>>
 where
     T: Send + Sync + 'static,
@@ -108,7 +107,7 @@ where
     let child_stack = child_stack_allocation.add(child_stack_allocation.align_offset(ALIGN));
 
     let inner = Arc::pin(JoinHandleInner {
-        // Safety: the Mutex is always pinned inside of `JoinHandleInner`s containing Arc
+        /// # Safety: the Mutex is always pinned inside of `JoinHandleInner`s containing Arc
         data: ManuallyDrop::new(UnsafeCell::new(None)),
         child_stack_allocation,
         allocated_size,
@@ -119,7 +118,8 @@ where
     });
 
     // Safety: this is okay, since `inner.child_tid_futex` which we are creating a reference to is
-    // A: atomic and B: is Pined in memory and will live long enought due to it being inside of a `Arc::pin`
+    // - atomic
+    // - is Pinned in memory and will live long enought due to it being inside of a `Arc::pin`
     let child_tid_futex = &inner.child_tid_futex as *const AtomicU32 as *mut u32;
 
     // We create a payload on the Heap so that we don't rely on any data on the stack after the clone
@@ -139,7 +139,7 @@ where
 
     let payload_ptr = Box::into_raw(payload);
 
-    let child_tid = syscalls::clone3(
+    let child_tid = syscalls::clone3_vm_safe(
         |payload_ptr: *mut ()| -> ! {
             let (child_stack_allocation, allocated_size) = {
                 let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr as *mut Payload<T, F>);

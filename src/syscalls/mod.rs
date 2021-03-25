@@ -1,7 +1,7 @@
 #[macro_use]
 pub mod helper;
 pub mod raw;
-use core::{ptr::null_mut, sync::atomic::AtomicU32};
+use core::{hint::unreachable_unchecked, ptr::null_mut, sync::atomic::AtomicU32};
 
 pub use raw::*;
 
@@ -114,21 +114,58 @@ pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> 
     )
 }
 
+#[inline(never)]
 #[allow(clippy::comparison_chain)]
-pub unsafe fn clone3(f: unsafe fn() -> i32, args: CloneArgs) -> SyscallResult<u32> {
+pub unsafe fn clone3(
+    f: unsafe fn() -> (i8, *mut u8, usize),
+    args: CloneArgs,
+) -> SyscallResult<u32> {
     // asm!("int3");
 
     asm!("mov r13, {}", in(reg) f, lateout("r13") _);
 
     let res = raw::clone3(&args as *const _, core::mem::size_of::<CloneArgs>());
     if res == 0 {
-        let f: unsafe fn() -> i32;
+        let f: unsafe fn() -> (i8, *mut u8, usize);
 
         asm!("mov {}, r13", out(reg) f);
 
-        let res = f();
+        let (ret, child_stack, child_stack_size) = f();
 
-        exit(res);
+        // We're going to deallocate our own stack!
+        // after this we **must not** touch the stack
+        // because of this we're going to do all the syscalls by hand
+        //
+
+        // load the return value into a register so that we can
+        // use it without touching the stack
+        asm!("mov r13, {}", in(reg) ret as isize);
+
+        // Munmap
+        asm!(
+            "syscall",
+            in("rdi") child_stack,
+            in("rsi") child_stack_size,
+            inlateout("rax") crate::syscalls::raw::SYS_NO_MUNMAP => _,
+            lateout("rdx") _,
+            lateout("rcx") _,
+            lateout("r11") _,
+        );
+
+        // Load return value from r13 into exit syscall argument register
+        asm!("mov rdi, r13");
+
+        // Exit
+        asm!(
+            "syscall",
+            inlateout("rax") crate::syscalls::raw::SYS_NO_EXIT => _,
+            lateout("rdx") _,
+            lateout("rcx") _,
+            lateout("r11") _,
+        );
+
+        // We just exited
+        unreachable_unchecked();
     } else if res < 0 {
         Err(SyscallError(-res as usize))
     } else {

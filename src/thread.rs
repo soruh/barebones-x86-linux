@@ -22,43 +22,9 @@ struct JoinHandleInner<T> {
 unsafe impl<T> Send for JoinHandle<T> where T: Send {}
 unsafe impl<T> Sync for JoinHandle<T> where T: Sync {} // Do we need T: Sync here?
 
-impl<T> Drop for JoinHandleInner<T> {
-    fn drop(&mut self) {
-        // debug!("dropping JoinHandleInner for stack at {:?}", self.child_stack_allocation);
-
-        // Drop the child's stack
-        unsafe {
-            syscalls::munmap(self.child_stack_allocation, self.allocated_size)
-                .expect("Failed to munmap child stack")
-        };
-    }
-}
-
 pub struct JoinHandle<T> {
     child_tid: u32,
     inner: Pin<Arc<JoinHandleInner<T>>>,
-}
-
-impl<T> Drop for JoinHandle<T> {
-    fn drop(&mut self) {
-        // TODO: It's pretty ugly that we have to `clone` here,
-        // is there a better way?
-
-        // Safety: we are not moving inner out of the Arc,
-        // but are only reading the Arc's strong count.
-        let strong_count = unsafe {
-            let arc = Pin::into_inner_unchecked(self.inner.clone());
-            Arc::strong_count(&arc)
-        };
-
-        // dbg!(strong_count);
-
-        if strong_count > 2 {
-            // NOTE: we need to do this, since we need to free the threads stack
-            // TODO: is there a way for the thread to free it's own thread?
-            panic!("dropped a JoinHandle while the thread was still running. Either `join` or `leak` it. (forgeting it leaks its stack.)");
-        }
-    }
 }
 
 impl<T: Send + Sync> JoinHandle<T> {
@@ -79,7 +45,7 @@ impl<T: Send + Sync> JoinHandle<T> {
                         .data
                         .get()
                         .read()
-                        .expect("Child thread did not return the expected data"));
+                        .expect("Child thread did not return data (it probably panicked)"));
                 }
             }
 
@@ -110,12 +76,6 @@ impl<T: Send + Sync> JoinHandle<T> {
                 // be spurious. We check if the thread is done either way.
             }
         }
-    }
-
-    /// drops the JoinHandle to the thread.
-    /// NOTE: leaks the memory allocated for the thread stack!
-    pub fn leak(self) {
-        core::mem::forget(self);
     }
 }
 
@@ -199,11 +159,18 @@ where
             // Write result to return value
             *payload.inner.data.get() = Some(res);
 
-            0
+            (
+                0,
+                payload.inner.child_stack_allocation,
+                payload.inner.allocated_size,
+            )
         },
         CloneArgs {
-            flags: CloneFlags::VM
-                | CloneFlags::IO
+            flags: CloneFlags::IO
+                | CloneFlags::FS
+                | CloneFlags::FILES
+                | CloneFlags::PARENT
+                | CloneFlags::VM
                 | CloneFlags::THREAD
                 | CloneFlags::SIGHAND
                 | CloneFlags::CHILD_SETTID

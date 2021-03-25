@@ -14,6 +14,7 @@ pub const SYS_NO_CLONE: usize = 56;
 pub const SYS_NO_FORK: usize = 57;
 pub const SYS_NO_EXIT: usize = 60;
 pub const SYS_NO_WAIT4: usize = 61;
+pub const SYS_NO_GETTID: usize = 186;
 pub const SYS_NO_FUTEX: usize = 202;
 pub const SYS_NO_WAITID: usize = 247;
 pub const SYS_NO_CLONE3: usize = 435;
@@ -267,6 +268,11 @@ pub unsafe fn wait4(
     ru: *mut Rusage,
 ) -> SyscallResult<u32> {
     syscall!(SYS_NO_WAIT4, upid, stat_addr, options, ru)
+}
+
+#[inline(always)]
+pub fn gettid() -> u32 {
+    unsafe { syscall!(RAW SYS_NO_GETTID) as u32 }
 }
 
 #[repr(C)]

@@ -33,6 +33,7 @@ mod lang_items;
 mod logger;
 mod start;
 mod sync;
+#[macro_use]
 mod syscalls;
 mod thread;
 
@@ -72,8 +73,8 @@ fn ncpu() -> io::Result<usize> {
     .buffer::<512>();
 
     for line in file.inline_lines::<128>() {
-        if let Some(siblings) = line?.strip_prefix("siblings\t: ") {
-            return Ok(siblings.strip_suffix("\n").unwrap().parse().unwrap());
+        if let Some(siblings) = line?.strip_prefix("siblings\t:") {
+            return Ok(siblings.trim().parse().unwrap());
         }
     }
 
@@ -84,6 +85,20 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
     let ncpu = ncpu().unwrap();
 
     dbg!(ncpu);
+
+    thread::spawn(
+        || {
+            let b = Box::new("test");
+
+            // syscalls::sleep(Duration::from_secs(60)).unwrap();
+
+            // panic!();
+        },
+        1024 * 1024,
+    )
+    .unwrap()
+    .join()
+    .unwrap();
 
     0
 }

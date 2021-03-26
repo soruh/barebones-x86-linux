@@ -54,9 +54,10 @@ unsafe fn main(env: Environment) -> i8 {
         Async,
         UserInput,
         FsTest,
+        Threading2,
     }
 
-    let test_function = TestFunction::FsTest;
+    let test_function = TestFunction::Threading2;
 
     match test_function {
         TestFunction::Alloc => alloc_test_main(env),
@@ -64,6 +65,7 @@ unsafe fn main(env: Environment) -> i8 {
         TestFunction::Async => async_test_main(env),
         TestFunction::UserInput => user_input_main(env),
         TestFunction::FsTest => fs_test_main(env),
+        TestFunction::Threading2 => thread_test_2(env),
     }
 }
 
@@ -89,9 +91,13 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
 
     dbg!(ncpu);
 
-    let res = thread::spawn(
+    0
+}
+
+unsafe fn thread_test_2(_env: Environment) -> i8 {
+    let mut handle = thread::spawn(
         || {
-            let b = Box::new("test");
+            let _b = Box::new("test");
 
             // syscalls::sleep(Duration::from_secs(60)).unwrap();
 
@@ -101,11 +107,15 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
         },
         STACK_SIZE,
     )
-    .unwrap()
-    .join()
     .unwrap();
 
-    dbg!(res);
+    let res = handle.join().unwrap();
+
+    if let Some(_) = res {
+        info!("thread {} succeeded", handle.tid());
+    } else {
+        info!("thread {} failed", handle.tid());
+    }
 
     0
 }
@@ -246,7 +256,7 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
 
     info!("parent waiting...");
 
-    for handle in handles {
+    for mut handle in handles {
         assert_eq!(handle.join().unwrap(), Some(42));
     }
 

@@ -12,8 +12,6 @@ use crate::syscalls::{self, futex_wait, munmap};
 use alloc::{boxed::Box, sync::Arc};
 use syscalls::{CloneArgs, CloneFlags, SyscallResult};
 
-// TODO: remove Debug bounds and #[inline(never)] annotations
-
 struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
     child_stack_allocation: *mut u8,
@@ -22,6 +20,7 @@ struct JoinHandleInner<T> {
     _pinned: PhantomPinned,
 }
 
+/*
 impl<T> core::fmt::Debug for JoinHandleInner<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("JoinHandleInner")
@@ -34,31 +33,46 @@ impl<T> core::fmt::Debug for JoinHandleInner<T> {
 
 impl<T> Drop for JoinHandleInner<T> {
     fn drop(&mut self) {
-        debug!("dropping join handle: {:?}", self);
+        debug!("dropping join handle inner: {:?}", self);
     }
 }
+*/
 
 unsafe impl<T> Send for JoinHandle<T> where T: Send {}
 unsafe impl<T> Sync for JoinHandle<T> where T: Sync {} // Do we need T: Sync here?
 
 pub struct JoinHandle<T> {
     child_tid: u32,
-    inner: Pin<Arc<JoinHandleInner<T>>>,
+    inner: Option<Pin<Arc<JoinHandleInner<T>>>>,
 }
 
 impl<T: Send + Sync> JoinHandle<T> {
+    /// Get a reference to the join handle's child tid.
+    pub fn tid(&self) -> u32 {
+        self.child_tid
+    }
+
+    /// Returns false if the handle has already been joined
+    pub fn can_join(&self) -> bool {
+        self.inner.is_some()
+    }
+
     /// Wait for the thread to finish, deallocate it's stack
     /// and return it's result
-    #[inline(never)]
-    pub fn join(self) -> SyscallResult<Option<T>> {
+    pub fn join(&mut self) -> SyscallResult<Option<T>> {
+        let inner = self
+            .inner
+            .take()
+            .expect("Tried to join thread that was already joined");
+
         loop {
-            if self.inner.child_tid_futex.load(Ordering::SeqCst) == 0 {
+            if inner.child_tid_futex.load(Ordering::SeqCst) == 0 {
                 // The child has exited -> return the result
 
                 // Safety: we can take ownership of the data here since:
                 // - the thread has exited (=> we have exclusive access)
                 // - the data is `ManuallyDrop` so it will not be droppped twice.
-                let res = unsafe { self.inner.data.get().read() };
+                let res = unsafe { inner.data.get().read() };
 
                 if res.is_none() {
                     // Safety: we need to free the child stack if and only if the thread did not.
@@ -72,7 +86,7 @@ impl<T: Send + Sync> JoinHandle<T> {
                     // => it did not return data and thus did not free its stack
                     unsafe {
                         // Free the thread's stack
-                        munmap(self.inner.child_stack_allocation, self.inner.allocated_size)
+                        munmap(inner.child_stack_allocation, inner.allocated_size)
                             .expect("Failed to free thread stack");
                     }
                 }
@@ -80,7 +94,7 @@ impl<T: Send + Sync> JoinHandle<T> {
                 break Ok(res);
             }
 
-            let futex_var = &self.inner.child_tid_futex as *const AtomicU32;
+            let futex_var = &inner.child_tid_futex as *const AtomicU32;
 
             // Try to wait on the futex
             let res = unsafe {
@@ -112,7 +126,7 @@ impl<T: Send + Sync> JoinHandle<T> {
 
 /// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will be leaked
 /// # Safety: the provided stack size must be big enough
-#[inline(never)]
+
 pub unsafe fn spawn<T, F>(f: F, stack_size: usize) -> SyscallResult<JoinHandle<T>>
 where
     T: Send + Sync + 'static,
@@ -160,7 +174,7 @@ where
     });
 
     // TODO: find out why if we don't do this the memory of the `JoinHandleInner` stays uninitialized
-    core::ptr::read_volatile(&*inner);
+    core::mem::forget(core::ptr::read_volatile(&*inner));
 
     // Safety: this is okay, since `inner.child_tid_futex` which we are creating a reference to is
     // - atomic
@@ -266,5 +280,8 @@ where
 
     // dbg!(child_tid);
 
-    Ok(JoinHandle { child_tid, inner })
+    Ok(JoinHandle {
+        child_tid,
+        inner: Some(inner),
+    })
 }

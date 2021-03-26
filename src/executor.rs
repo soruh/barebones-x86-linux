@@ -196,7 +196,7 @@ impl Drop for Executor {
             workers.push(worker);
         }
 
-        for worker in workers {
+        for mut worker in workers {
             worker.handle.join().expect("Failed to join worker thread");
         }
     }

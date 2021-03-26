@@ -1,3 +1,5 @@
+use core::ptr::null;
+
 pub struct Environment {
     args_start: *const *const u8,
     env_start: *const *const u8,
@@ -10,6 +12,27 @@ unsafe impl Sync for Environment {}
 impl Environment {
     fn n_args(&self) -> usize {
         (unsafe { self.env_start.offset_from(self.args_start) - 1 }) as usize
+    }
+
+    pub unsafe fn calculate_stack_base(&self) -> *mut u8 {
+        let mut ptr = self.env_start;
+
+        while *ptr != null() {
+            ptr = ptr.add(1);
+        }
+
+        // end of env
+        let end_of_env = ptr;
+
+        // Note: we currently assume that the environment variables are in memory sequentially
+        // TODO: this is probably not guaranteed (but "it werks on my machine")
+        let mut max = *end_of_env.sub(1);
+
+        // stack top is page aligned
+        // TODO: is it actually?
+        max = max.add(max.align_offset(crate::PAGESIZE));
+
+        max as *mut _
     }
 
     pub unsafe fn from_raw_parts(n_args: usize, args_start: *const *const u8) -> Self {

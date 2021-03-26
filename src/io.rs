@@ -29,6 +29,8 @@ impl From<Utf8Error> for Error {
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+
 pub struct Fd(pub u32);
 impl Fd {
     pub fn write(&self, bytes: &[u8]) -> Result<usize> {
@@ -71,6 +73,14 @@ impl Fd {
                 return Ok(n_read_total);
             }
         }
+    }
+}
+
+impl Write for Fd {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write_all(s.as_bytes())
+            .map(|_| ())
+            .map_err(|_| core::fmt::Error)
     }
 }
 

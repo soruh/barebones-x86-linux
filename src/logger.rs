@@ -11,7 +11,7 @@ pub struct Logger<const VERBOSE: bool>;
 
 impl<const VERBOSE: bool> Log for Logger<VERBOSE> {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
-        // TODO
+        // TODO?
         true
     }
 
@@ -33,7 +33,7 @@ impl<const VERBOSE: bool> Log for Logger<VERBOSE> {
 
         if VERBOSE {
             if let (Some(file), Some(line)) = (record.file(), record.line()) {
-                eprintln!(
+                println!(
                     "[\x1b[{}m{}{}\x1b[0m] [{}:{}] {}",
                     color,
                     level,
@@ -46,7 +46,7 @@ impl<const VERBOSE: bool> Log for Logger<VERBOSE> {
             }
         }
 
-        eprintln!(
+        println!(
             "[\x1b[{}m{}{}\x1b[0m] {}",
             color,
             level,

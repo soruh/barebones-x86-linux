@@ -35,11 +35,40 @@ unsafe extern "C" fn _init(n_args: usize, args_start: *const *const u8) -> ! {
 
     crate::allocator::init().expect("Failed to initialize global allocator");
 
-    crate::logger::init::<false>(log::LevelFilter::Trace).expect("Failed to initialize logg");
+    crate::logger::init::<false>(log::LevelFilter::Trace).expect("Failed to initialize logger");
+
+    let stack_limit = crate::syscalls::getrlimit(crate::syscalls::Resource::STACK)
+        .expect("Failed to determine stack limit")
+        .current as usize;
+
+    let stack_base = env.calculate_stack_base();
+
+    crate::stack_protection::create_guard_for_stack(stack_base, stack_limit)
+        .expect("Failed to alloate guard page/s");
+
+    crate::tls::setup_tls(crate::tls::Tls {
+        stack_base,
+        stack_limit,
+    })
+    .expect("Failed to set tls");
+
+    crate::stack_protection::setup_alt_stack().expect("Failed to set up a signal handling stack");
+
+    crate::stack_protection::setup_segv_handler().expect("Failed to set up segv handler");
 
     let exit_code = crate::main(env) as i32;
 
     crate::io::cleanup();
+
+    crate::stack_protection::teardown_alt_stack()
+        .expect("Failed to tear down signal handling stack");
+
+    crate::stack_protection::teardown_segv_handler().expect("Failed to tear down segv handler");
+
+    let _ = crate::tls::teardown_tls().expect("Failed to teardown tls");
+
+    crate::stack_protection::free_guard_for_stack(stack_base, stack_limit)
+        .expect("Failed to alloate guard page/s");
 
     crate::allocator::deinit().expect("Failed to de-initialize global allocator");
 

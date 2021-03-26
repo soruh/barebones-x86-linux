@@ -680,7 +680,7 @@ impl Allocator {
                 allocation_size,
                 MProt::READ | MProt::WRITE,
                 MMapFlags::ANONYMOUS | MMapFlags::PRIVATE,
-                0,
+                -1,
                 0,
             );
 

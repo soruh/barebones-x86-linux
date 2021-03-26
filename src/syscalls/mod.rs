@@ -189,7 +189,7 @@ pub unsafe fn clone3_vm_safe(
     // NOTE: we are the parent
 
     if res < 0 {
-        Err(SyscallError((-res) as usize))
+        Err(SyscallError((-res) as u32))
     } else {
         debug_assert_ne!(res, 0);
 
@@ -216,7 +216,7 @@ pub unsafe fn clone(
 
         exit(f());
     } else if res < 0 {
-        Err(SyscallError(-res as usize))
+        Err(SyscallError(-res as u32))
     } else {
         Ok(res as u32)
     }

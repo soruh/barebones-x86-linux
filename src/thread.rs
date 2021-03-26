@@ -8,9 +8,13 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use crate::syscalls::{self, futex_wait, munmap};
+use crate::{
+    stack_protection::setup_alt_stack,
+    syscalls::{self, futex_wait, munmap},
+    tls::{setup_tls, teardown_tls, Tls},
+};
 use alloc::{boxed::Box, sync::Arc};
-use syscalls::{CloneArgs, CloneFlags, SyscallResult};
+use syscalls::{helper::SyscallErrorKind, CloneArgs, CloneFlags, SyscallResult};
 
 struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
@@ -85,6 +89,13 @@ impl<T: Send + Sync> JoinHandle<T> {
                     // => for the thread to free its stack it would have had to return data
                     // => it did not return data and thus did not free its stack
                     unsafe {
+                        // Free the thread's stack guard
+                        crate::stack_protection::free_guard_for_stack(
+                            inner.child_stack_allocation.add(inner.allocated_size),
+                            inner.allocated_size,
+                        )
+                        .expect("Failed to free stack guard");
+
                         // Free the thread's stack
                         munmap(inner.child_stack_allocation, inner.allocated_size)
                             .expect("Failed to free thread stack");
@@ -107,13 +118,18 @@ impl<T: Send + Sync> JoinHandle<T> {
             };
 
             if let Err(err) = res {
-                if err.0 != 11 {
-                    panic!("Failed to wait on mutex: {}", err);
+                if err.kind() == SyscallErrorKind::EAGAIN {
+                    let child_tid = inner.child_tid_futex.load(Ordering::SeqCst);
+                    if !(child_tid == self.child_tid || child_tid == 0 || child_tid as i32 == -1) {
+                        panic!(
+                            "child_tid was neither self.child_tid({}) (child is stil running),
+                             0 (child has exited) nor -1 (child has not started yet), but {}.
+                             THIS IS PROBABLY A MEMORY INCONSITENCY.",
+                            self.child_tid, child_tid as i32
+                        );
+                    }
                 } else {
-                    // The value at the futex was not the child_tid
-                    // It was probably 0, but it could also be u32::MAX,
-                    // because the child thread did not yet write it's tid there
-                    // either way, we need to try again.
+                    panic!("Failed to wait on mutex: {}", err);
                 }
             } else {
                 // The futex was woken.
@@ -154,8 +170,15 @@ where
         allocated_size,
         MProt::WRITE | MProt::READ | MProt::GROWSDOWN,
         MMapFlags::ANONYMOUS | MMapFlags::PRIVATE | MMapFlags::GROWSDOWN | MMapFlags::STACK,
+        -1,
         0,
-        0,
+    )?;
+
+    // dbg!(child_stack_allocation);
+
+    crate::stack_protection::create_guard_for_stack(
+        child_stack_allocation.add(allocated_size),
+        allocated_size,
     )?;
 
     // This should never actually do anything because mmaped memeory *should* be page aligned
@@ -169,7 +192,7 @@ where
         allocated_size,
 
         // used to check if the child has exited
-        child_tid_futex: u32::MAX.into(),
+        child_tid_futex: (-1_i32 as u32).into(),
         _pinned: PhantomPinned,
     });
 
@@ -208,17 +231,39 @@ where
             let (child_stack_allocation, allocated_size) = {
                 let payload: Box<Payload<T, F>> = Box::from_raw(payload_ptr as *mut Payload<T, F>);
 
+                let child_stack_allocation = payload.inner.child_stack_allocation;
+                let allocated_size = payload.inner.allocated_size;
+
+                setup_alt_stack().expect("Failed to set up a signal handling stack");
+
+                setup_tls(Tls {
+                    stack_base: child_stack_allocation.add(allocated_size),
+                    stack_limit: allocated_size,
+                })
+                .expect("Failed to setup tls");
+
                 // Call the provided closure
                 let res = (payload.closure)();
 
                 // Write result to return value
                 *payload.inner.data.get() = Some(res);
 
-                (
-                    payload.inner.child_stack_allocation,
-                    payload.inner.allocated_size,
-                )
+                teardown_tls().expect("Failed to tear down tls");
 
+                // Free the stack guard
+                crate::stack_protection::free_guard_for_stack(
+                    child_stack_allocation.add(allocated_size),
+                    allocated_size,
+                )
+                .expect("Failed to free stack guard");
+
+                // free the signal stack
+                crate::stack_protection::teardown_alt_stack()
+                    .expect("Failed to tear down signal handling stack");
+
+                drop(payload.inner);
+
+                (child_stack_allocation, allocated_size)
                 // Drop everything on the stack before unmaping it
             };
 

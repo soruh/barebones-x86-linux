@@ -2,6 +2,7 @@ use crate::io::stderr;
 use crate::syscalls::exit;
 
 #[panic_handler]
+#[allow(const_item_mutation)]
 fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     use core::fmt::Write;
 
@@ -10,28 +11,28 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     // Discard the write result; We are already panicking...
     let _ = match (info.message(), info.location()) {
         (Some(message), Some(location)) => writeln!(
-            stderr(),
-            "thread [{}] \x1b[31mpanicked\x1b[m at '{:?}', {}",
+            crate::io::StdErr::FD,
+            "thread {} \x1b[31mpanicked\x1b[m at '{:?}', {}",
             thread,
             message,
             location
         ),
         (Some(message), None) => writeln!(
-            stderr(),
-            "thread [{}] \x1b[31mpanicked\x1b[m at '{}'",
+            crate::io::StdErr::FD,
+            "thread {} \x1b[31mpanicked\x1b[m at '{}'",
             thread,
             message
         ),
         (None, Some(location)) => {
             writeln!(
-                stderr(),
-                "thread [{}] \x1b[31mpanicked\x1b[m at {}",
+                crate::io::StdErr::FD,
+                "thread {} \x1b[31mpanicked\x1b[m at {}",
                 thread,
                 location
             )
         }
 
-        _ => writeln!(stderr(), "thread [{}] \x1b[31mpanicked\x1b[m", thread),
+        _ => writeln!(stderr(), "thread {} \x1b[31mpanicked\x1b[m", thread),
     };
 
     unsafe { exit(1) }

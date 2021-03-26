@@ -19,6 +19,8 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+const PAGESIZE: usize = 4 * 1024;
+
 // extern crate compiler_builtins;
 
 #[macro_use]
@@ -31,8 +33,10 @@ mod executor;
 mod fs;
 mod lang_items;
 mod logger;
+mod stack_protection;
 mod start;
 mod sync;
+mod tls;
 #[macro_use]
 mod syscalls;
 mod thread;
@@ -54,10 +58,10 @@ unsafe fn main(env: Environment) -> i8 {
         Async,
         UserInput,
         FsTest,
-        Threading2,
+        StackOverflow,
     }
 
-    let test_function = TestFunction::Threading2;
+    let test_function = TestFunction::StackOverflow;
 
     match test_function {
         TestFunction::Alloc => alloc_test_main(env),
@@ -65,10 +69,11 @@ unsafe fn main(env: Environment) -> i8 {
         TestFunction::Async => async_test_main(env),
         TestFunction::UserInput => user_input_main(env),
         TestFunction::FsTest => fs_test_main(env),
-        TestFunction::Threading2 => thread_test_2(env),
+        TestFunction::StackOverflow => stack_overflow_test(env),
     }
 }
 
+// TODO: use cpuid?
 fn ncpu() -> io::Result<usize> {
     let mut file = fs::File::open(
         const_cstr!("/proc/cpuinfo"),
@@ -94,7 +99,31 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
     0
 }
 
-unsafe fn thread_test_2(_env: Environment) -> i8 {
+unsafe fn stack_overflow_test(_env: Environment) -> i8 {
+    unsafe fn overflow_stack_inner(initial: bool) {
+        static mut START: usize = 0;
+
+        let rsp: usize;
+        asm!("mov {}, rsp", out(reg) rsp);
+
+        if initial {
+            START = rsp;
+        } else {
+            let size = START - rsp;
+
+            if size % (128 * 1024) == 0 {
+                dbg!(size);
+            }
+        }
+
+        overflow_stack_inner(false);
+    }
+
+    // Safety: must only be called by one thread at once
+    unsafe fn overflow_stack() {
+        overflow_stack_inner(true);
+    }
+
     let mut handle = thread::spawn(
         || {
             let _b = Box::new("test");
@@ -102,6 +131,8 @@ unsafe fn thread_test_2(_env: Environment) -> i8 {
             // syscalls::sleep(Duration::from_secs(60)).unwrap();
 
             debug!("I am the thread!");
+
+            // overflow_stack();
 
             // panic!("end of thread");
         },

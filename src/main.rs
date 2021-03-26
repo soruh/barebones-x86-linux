@@ -45,7 +45,7 @@ use sync::Mutex;
 use syscalls::{OpenFlags, OpenMode};
 
 /// default stack size (4Mib)
-const STACK_SIZE: usize = 4 * 1024 * 1024;
+const STACK_SIZE: usize = 4 * 1024 * 1024 + 1;
 
 unsafe fn main(env: Environment) -> i8 {
     enum TestFunction {
@@ -97,7 +97,7 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
 
             debug!("I am the thread!");
 
-            panic!("end of thread");
+            // panic!("end of thread");
         },
         STACK_SIZE,
     )

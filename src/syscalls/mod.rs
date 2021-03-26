@@ -121,8 +121,11 @@ pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> 
 unsafe extern "C" fn clone_callback() -> ! {
     // NOTE: We are a thread that was just spawned
 
+    let rsp: *const ();
     // align the stack pointer
-    asm!("and rsp, 0xfffffffffffffff0");
+    asm!("and {}, rsp", out(reg) rsp);
+
+    dbg!(rsp, rsp.align_offset(64));
 
     // retore data the parent saved for us
     let f: unsafe fn(*mut ()) -> !;

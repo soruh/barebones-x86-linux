@@ -12,12 +12,30 @@ use crate::syscalls::{self, futex_wait, munmap};
 use alloc::{boxed::Box, sync::Arc};
 use syscalls::{CloneArgs, CloneFlags, SyscallResult};
 
+// TODO: remove Debug bounds and #[inline(never)] annotations
+
 struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
     child_stack_allocation: *mut u8,
     allocated_size: usize,
     child_tid_futex: AtomicU32,
     _pinned: PhantomPinned,
+}
+
+impl<T> core::fmt::Debug for JoinHandleInner<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("JoinHandleInner")
+            .field("child_stack_allocation", &self.child_stack_allocation)
+            .field("allocated_size", &self.allocated_size)
+            .field("child_tid_futex", &self.child_tid_futex)
+            .finish()
+    }
+}
+
+impl<T> Drop for JoinHandleInner<T> {
+    fn drop(&mut self) {
+        debug!("dropping join handle: {:?}", self);
+    }
 }
 
 unsafe impl<T> Send for JoinHandle<T> where T: Send {}
@@ -31,9 +49,10 @@ pub struct JoinHandle<T> {
 impl<T: Send + Sync> JoinHandle<T> {
     /// Wait for the thread to finish, deallocate it's stack
     /// and return it's result
+    #[inline(never)]
     pub fn join(self) -> SyscallResult<Option<T>> {
         loop {
-            if self.inner.child_tid_futex.load(Ordering::Relaxed) == 0 {
+            if self.inner.child_tid_futex.load(Ordering::SeqCst) == 0 {
                 // The child has exited -> return the result
 
                 // Safety: we can take ownership of the data here since:
@@ -53,7 +72,8 @@ impl<T: Send + Sync> JoinHandle<T> {
                     // => it did not return data and thus did not free its stack
                     unsafe {
                         // Free the thread's stack
-                        munmap(self.inner.child_stack_allocation, self.inner.allocated_size)?;
+                        munmap(self.inner.child_stack_allocation, self.inner.allocated_size)
+                            .expect("Failed to free thread stack");
                     }
                 }
 
@@ -92,6 +112,7 @@ impl<T: Send + Sync> JoinHandle<T> {
 
 /// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will be leaked
 /// # Safety: the provided stack size must be big enough
+#[inline(never)]
 pub unsafe fn spawn<T, F>(f: F, stack_size: usize) -> SyscallResult<JoinHandle<T>>
 where
     T: Send + Sync + 'static,
@@ -101,7 +122,16 @@ where
     // TODO: if we randomly SegFault increase this :))
     const ALIGN: usize = 16;
 
+    // make sure the top of the stack is aligned
+    // we need to allocate at most 2*ALIGN more, because we need to adjust both top top and the bottom of the stack
+    // to ensure there are at least `stack_size` of aligned stack available
     let allocated_size = stack_size + ALIGN;
+
+    // make sure the stack is an aligned number of bytes so it's top is aligne
+    // we are basically calculating by how much the current size is misaligned (allocated_size % ALIGN)
+    // and then adjust the size up by ALIGN- that ammount to make it aligned, but if
+    // allocated_size % ALIGN == 0 we don't add anything ((ALIGN - 0) % ALIGN == 0)
+    let stack_size = allocated_size + (ALIGN - allocated_size % ALIGN) % ALIGN;
 
     use syscalls::{MMapFlags, MProt};
 
@@ -129,10 +159,18 @@ where
         _pinned: PhantomPinned,
     });
 
+    // TODO: find out why if we don't do this the memory of the `JoinHandleInner` stays uninitialized
+    core::ptr::read_volatile(&*inner);
+
     // Safety: this is okay, since `inner.child_tid_futex` which we are creating a reference to is
     // - atomic
-    // - is Pinned in memory and will live long enought due to it being inside of a `Arc::pin`
+    // - Pinned in memory and will live long enought due to it being inside of an `Arc::pin`
     let child_tid_futex = &inner.child_tid_futex as *const AtomicU32 as *mut u32;
+
+    // dbg!(&inner);
+
+    // dbg!(&inner.child_stack_allocation as *const _);
+    // asm!("int3");
 
     // We create a payload on the Heap so that we don't rely on any data on the stack after the clone
     // If we didn't to this we would just read uninitialized memory from the `child_stack`
@@ -166,6 +204,8 @@ where
                     payload.inner.child_stack_allocation,
                     payload.inner.allocated_size,
                 )
+
+                // Drop everything on the stack before unmaping it
             };
 
             // ATTENTION: We're going to unmap our own stack !

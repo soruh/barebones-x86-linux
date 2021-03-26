@@ -8,7 +8,7 @@ use core::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use crate::syscalls::{self, futex_wait};
+use crate::syscalls::{self, futex_wait, munmap};
 use alloc::{boxed::Box, sync::Arc};
 use syscalls::{CloneArgs, CloneFlags, SyscallResult};
 
@@ -31,7 +31,7 @@ pub struct JoinHandle<T> {
 impl<T: Send + Sync> JoinHandle<T> {
     /// Wait for the thread to finish, deallocate it's stack
     /// and return it's result
-    pub fn join(self) -> SyscallResult<T> {
+    pub fn join(self) -> SyscallResult<Option<T>> {
         loop {
             if self.inner.child_tid_futex.load(Ordering::Relaxed) == 0 {
                 // The child has exited -> return the result
@@ -39,14 +39,25 @@ impl<T: Send + Sync> JoinHandle<T> {
                 // Safety: we can take ownership of the data here since:
                 // - the thread has exited (=> we have exclusive access)
                 // - the data is `ManuallyDrop` so it will not be droppped twice.
-                unsafe {
-                    break Ok(self
-                        .inner
-                        .data
-                        .get()
-                        .read()
-                        .expect("Child thread did not return data (it probably panicked)"));
+                let res = unsafe { self.inner.data.get().read() };
+
+                if res.is_none() {
+                    // Safety: we need to free the child stack if and only if the thread did not.
+                    // proposition: The thread did not free its stack
+                    //
+                    // We know:
+                    // - the thread has exited
+                    // - the thread did not return any data
+                    // - freeing its stack is necessarily the last thing the thread does
+                    // => for the thread to free its stack it would have had to return data
+                    // => it did not return data and thus did not free its stack
+                    unsafe {
+                        // Free the thread's stack
+                        munmap(self.inner.child_stack_allocation, self.inner.allocated_size)?;
+                    }
                 }
+
+                break Ok(res);
             }
 
             let futex_var = &self.inner.child_tid_futex as *const AtomicU32;
@@ -79,7 +90,8 @@ impl<T: Send + Sync> JoinHandle<T> {
     }
 }
 
-//// # Safety: the provided stack size must be big enough
+/// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will be leaked
+/// # Safety: the provided stack size must be big enough
 pub unsafe fn spawn<T, F>(f: F, stack_size: usize) -> SyscallResult<JoinHandle<T>>
 where
     T: Send + Sync + 'static,

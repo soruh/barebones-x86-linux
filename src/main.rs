@@ -44,6 +44,9 @@ use io::stdin;
 use sync::Mutex;
 use syscalls::{OpenFlags, OpenMode};
 
+/// default stack size (4Mib)
+const STACK_SIZE: usize = 4 * 1024 * 1024;
+
 unsafe fn main(env: Environment) -> i8 {
     enum TestFunction {
         Alloc,
@@ -86,7 +89,7 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
 
     dbg!(ncpu);
 
-    thread::spawn(
+    let res = thread::spawn(
         || {
             let b = Box::new("test");
 
@@ -94,13 +97,15 @@ unsafe fn fs_test_main(_env: Environment) -> i8 {
 
             debug!("I am the thread!");
 
-            // panic!("end of thread");
+            panic!("end of thread");
         },
-        1024 * 1024,
+        STACK_SIZE,
     )
     .unwrap()
     .join()
     .unwrap();
+
+    dbg!(res);
 
     0
 }
@@ -166,7 +171,7 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
         Box::leak(b);
     }
 
-    let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(1024 * 1024);
+    let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(STACK_SIZE);
 
     for i in 0..10 * 1024 {
         let mut a = [0; 32];
@@ -229,7 +234,7 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
 
                     42
                 },
-                1024 * 1024,
+                STACK_SIZE,
             )
             .expect("Failed to spawn thread")
         })
@@ -242,7 +247,7 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
     info!("parent waiting...");
 
     for handle in handles {
-        assert_eq!(handle.join().unwrap(), 42);
+        assert_eq!(handle.join().unwrap(), Some(42));
     }
 
     info!("parent done");

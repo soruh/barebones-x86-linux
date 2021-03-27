@@ -1,6 +1,6 @@
 use crate::{syscalls::*, PAGESIZE};
+use core::ptr::null;
 use core::ptr::null_mut;
-use core::{fmt::Write, ptr::null};
 
 const SIG_STACK_SIZE: usize = 60 * 1024;
 const GUARD_SIZE: usize = 2; // size of the stack guard in pages
@@ -143,7 +143,6 @@ pub unsafe fn free_guard_for_stack(stack_base: *const u8, stack_size: usize) -> 
     Ok(())
 }
 
-#[allow(const_item_mutation)]
 unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, _unused: *mut ()) {
     trace!("entered SEGV handler");
 
@@ -152,13 +151,7 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
             let seg_fault_addr = (*signal_info).inner.sig_fault.addr as *mut u8;
 
             if (*signal_info).code.segv() == SegvCode::ACCERR {
-                writeln!(crate::io::StdErr::FD, "{:?}", *signal_info).unwrap();
-
-                writeln!(crate::io::StdErr::FD, "addr: {:?}", seg_fault_addr).unwrap();
-
                 let tls = *crate::tls::get_tls_ptr().expect("Failed to get tls pointer");
-
-                dbg_p!(tls);
 
                 let stack_end = tls.stack_base.sub(tls.stack_limit);
 
@@ -167,12 +160,8 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
                         % crate::PAGESIZE,
                 );
 
-                dbg!(seg_fault_addr, seg_fault_addr_page, stack_end);
-
                 let n_pages_overshot =
                     stack_end.offset_from(seg_fault_addr_page) / crate::PAGESIZE as isize;
-
-                dbg!(n_pages_overshot);
 
                 if (1..=GUARD_SIZE as isize).contains(&n_pages_overshot) {
                     panic!(

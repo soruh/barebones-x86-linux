@@ -7,6 +7,8 @@ use core::{
     ptr::null_mut,
     usize,
 };
+const UNALLOCATED_DATA_SENTINEL: u8 = 0x42;
+
 // TODO: switch this to a linked list arena approach?
 
 // adjustable contants
@@ -579,6 +581,17 @@ impl AllocatorInner {
 
         let mut new_block = Block([0; BLOCK_SIZE]);
         new_block.0[0] = chunk_shift as u8;
+
+        if UNALLOCATED_DATA_SENTINEL != 0 {
+            let size = new_block.chunk_size();
+            let n = new_block.n_header_chunks();
+
+            for dest in new_block.0.iter_mut().skip(n * size) {
+                *dest = UNALLOCATED_DATA_SENTINEL;
+            }
+
+            assert!(new_block.check_if_empty());
+        }
 
         #[allow(clippy::never_loop)]
         let block_ptr = 'outer: loop {

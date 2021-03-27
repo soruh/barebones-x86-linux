@@ -5,10 +5,10 @@ authors = ["soruh <mail@soruh.de>"]
 edition = "2018"
 
 [profile.dev]
-panic = "abort"
+# panic = "abort"
 
 [profile.release]
-panic = "abort"
+# panic = "abort"
 # debug = true
 
 [dependencies]

@@ -12,27 +12,27 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
     let _ = match (info.message(), info.location()) {
         (Some(message), Some(location)) => writeln!(
             crate::io::StdErr::FD,
-            "thread {} \x1b[31mpanicked\x1b[m at '{:?}', {}",
+            "thread [{}] \x1b[31mpanicked\x1b[m at '{:?}', {}",
             thread,
             message,
             location
         ),
         (Some(message), None) => writeln!(
             crate::io::StdErr::FD,
-            "thread {} \x1b[31mpanicked\x1b[m at '{}'",
+            "thread [{}] \x1b[31mpanicked\x1b[m at '{}'",
             thread,
             message
         ),
         (None, Some(location)) => {
             writeln!(
                 crate::io::StdErr::FD,
-                "thread {} \x1b[31mpanicked\x1b[m at {}",
+                "thread [{}] \x1b[31mpanicked\x1b[m at {}",
                 thread,
                 location
             )
         }
 
-        _ => writeln!(stderr(), "thread {} \x1b[31mpanicked\x1b[m", thread),
+        _ => writeln!(stderr(), "thread [{}] \x1b[31mpanicked\x1b[m", thread),
     };
 
     unsafe { exit(1) }

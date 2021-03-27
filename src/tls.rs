@@ -1,5 +1,3 @@
-use core::ptr::null_mut;
-
 use alloc::boxed::Box;
 
 use crate::syscalls::{arch_prctl, PrctlCode, SyscallResult};

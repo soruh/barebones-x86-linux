@@ -132,7 +132,7 @@ unsafe fn stack_overflow_test(_env: Environment) -> i8 {
 
             debug!("I am the thread!");
 
-            // overflow_stack();
+            overflow_stack();
 
             // panic!("end of thread");
         },

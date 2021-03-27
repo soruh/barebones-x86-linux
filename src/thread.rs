@@ -20,8 +20,16 @@ struct JoinHandleInner<T> {
     data: ManuallyDrop<UnsafeCell<Option<T>>>,
     child_stack_allocation: *mut u8,
     allocated_size: usize,
-    child_tid_futex: AtomicU32,
+    child_tid_futex: *const AtomicU32,
     _pinned: PhantomPinned,
+}
+
+impl<T> Drop for JoinHandleInner<T> {
+    fn drop(&mut self) {
+        unsafe {
+            Box::from_raw(self.child_tid_futex as *mut AtomicU32);
+        }
+    }
 }
 
 /*
@@ -69,8 +77,10 @@ impl<T: Send + Sync> JoinHandle<T> {
             .take()
             .expect("Tried to join thread that was already joined");
 
+        // dbg!(&inner.child_tid_futex as *const _);
+
         loop {
-            if inner.child_tid_futex.load(Ordering::SeqCst) == 0 {
+            if unsafe { &*inner.child_tid_futex }.load(Ordering::SeqCst) == 0 {
                 // The child has exited -> return the result
 
                 // Safety: we can take ownership of the data here since:
@@ -105,7 +115,7 @@ impl<T: Send + Sync> JoinHandle<T> {
                 break Ok(res);
             }
 
-            let futex_var = &inner.child_tid_futex as *const AtomicU32;
+            let futex_var = inner.child_tid_futex as *const AtomicU32;
 
             // Try to wait on the futex
             let res = unsafe {
@@ -119,7 +129,7 @@ impl<T: Send + Sync> JoinHandle<T> {
 
             if let Err(err) = res {
                 if err.kind() == SyscallErrorKind::EAGAIN {
-                    let child_tid = inner.child_tid_futex.load(Ordering::SeqCst);
+                    let child_tid = unsafe { &*inner.child_tid_futex }.load(Ordering::SeqCst);
                     if !(child_tid == self.child_tid || child_tid == 0 || child_tid as i32 == -1) {
                         panic!(
                             "child_tid was neither self.child_tid({}) (child is stil running),
@@ -142,7 +152,7 @@ impl<T: Send + Sync> JoinHandle<T> {
 
 /// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will be leaked
 /// # Safety: the provided stack size must be big enough
-
+#[inline(never)]
 pub unsafe fn spawn<T, F>(f: F, stack_size: usize) -> SyscallResult<JoinHandle<T>>
 where
     T: Send + Sync + 'static,
@@ -192,21 +202,24 @@ where
         allocated_size,
 
         // used to check if the child has exited
-        child_tid_futex: (-1_i32 as u32).into(),
+        child_tid_futex: Box::into_raw(Box::new(AtomicU32::new(-1_i32 as u32))),
         _pinned: PhantomPinned,
     });
 
-    // TODO: find out why if we don't do this the memory of the `JoinHandleInner` stays uninitialized
+    // TODO: find out why if we don't do this the memory of the `JoinHandleInner` sometimes stays uninitialized
     core::mem::forget(core::ptr::read_volatile(&*inner));
 
     // Safety: this is okay, since `inner.child_tid_futex` which we are creating a reference to is
     // - atomic
     // - Pinned in memory and will live long enought due to it being inside of an `Arc::pin`
-    let child_tid_futex = &inner.child_tid_futex as *const AtomicU32 as *mut u32;
+    let child_tid_futex = inner.child_tid_futex as *mut u32;
+
+    // dbg!(child_tid_futex);
 
     // dbg!(&inner);
 
     // dbg!(&inner.child_stack_allocation as *const _);
+    // dbg!(child_tid_futex);
     // asm!("int3");
 
     // We create a payload on the Heap so that we don't rely on any data on the stack after the clone

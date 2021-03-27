@@ -31,8 +31,7 @@ fn __panic_handler(info: &core::panic::PanicInfo) -> ! {
                 location
             )
         }
-
-        _ => writeln!(stderr(), "thread [{}] \x1b[31mpanicked\x1b[m", thread),
+        (None, None) => writeln!(stderr(), "thread [{}] \x1b[31mpanicked\x1b[m", thread),
     };
 
     unsafe { exit(1) }

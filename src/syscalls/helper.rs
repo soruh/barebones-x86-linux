@@ -1,3 +1,5 @@
+#![allow(clippy::upper_case_acronyms)]
+
 // Arch/ABI    Instruction           System  Ret  Ret  Error
 //                                   call #  val  val2
 // ---------------------------------------------------------

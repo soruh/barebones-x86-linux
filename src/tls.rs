@@ -16,7 +16,7 @@ unsafe fn set_gs(gs: u64) -> SyscallResult<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Tls {
     pub stack_base: *mut u8,
     pub stack_limit: usize,
@@ -31,6 +31,7 @@ pub unsafe fn get_tls_ptr() -> SyscallResult<*mut Tls> {
     get_gs().map(|gs| gs as *mut Tls)
 }
 
+// Safety: invalidates all references to thread local data
 pub unsafe fn teardown_tls() -> SyscallResult<Tls> {
     let tls = get_tls_ptr()?;
 

@@ -1,3 +1,7 @@
+#![allow(clippy::upper_case_acronyms)]
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
+
 use crate::io::Fd;
 
 use super::{helper::SyscallResult, SyscallError};
@@ -352,15 +356,9 @@ pub struct Sigaction {
     pub mask: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct SignalInfoCode(i32);
-
-impl core::fmt::Debug for SignalInfoCode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        todo!()
-    }
-}
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

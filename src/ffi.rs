@@ -20,13 +20,13 @@ impl From<&str> for CString {
     }
 }
 
-impl Into<String> for CString {
-    fn into(mut self) -> String {
+impl From<CString> for String {
+    fn from(mut from: CString) -> Self {
         unsafe {
             // remove 0 byte
-            self.0.pop();
-            // self.0 must also be a valid String, since it was created from one
-            core::mem::transmute(self.0)
+            from.0.pop();
+            // from.0 must also be a valid String, since it was created from one
+            core::mem::transmute(from.0)
         }
     }
 }
@@ -88,9 +88,9 @@ impl CStr {
     }
 }
 
-impl Into<CString> for &CStr {
-    fn into(self) -> CString {
-        CString(self.0.into())
+impl From<&CStr> for CString {
+    fn from(from: &CStr) -> Self {
+        CString(from.0.into())
     }
 }
 

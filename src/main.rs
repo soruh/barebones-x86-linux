@@ -48,9 +48,6 @@ use io::stdin;
 use sync::Mutex;
 use syscalls::{OpenFlags, OpenMode};
 
-/// default stack size (4Mib)
-const STACK_SIZE: usize = 4 * 1024 * 1024 + 1;
-
 unsafe fn main(env: Environment) -> i8 {
     enum TestFunction {
         Alloc,
@@ -119,6 +116,8 @@ unsafe fn stack_overflow_test(_env: Environment) -> i8 {
         overflow_stack_inner(false);
     }
 
+    // let _: u8 = core::ptr::read_volatile(core::ptr::null());
+
     // Safety: must only be called by one thread at once
     unsafe fn overflow_stack() {
         overflow_stack_inner(true);
@@ -132,17 +131,17 @@ unsafe fn stack_overflow_test(_env: Environment) -> i8 {
 
             debug!("I am the thread!");
 
-            overflow_stack();
+            // overflow_stack();
 
             // panic!("end of thread");
         },
-        STACK_SIZE,
+        None,
     )
     .unwrap();
 
     let res = handle.join().unwrap();
 
-    if let Some(_) = res {
+    if res.is_some() {
         info!("thread {} succeeded", handle.tid());
     } else {
         info!("thread {} failed", handle.tid());
@@ -212,7 +211,7 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
         Box::leak(b);
     }
 
-    let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(STACK_SIZE);
+    let mut v: Vec<Box<[u8; 32]>> = Vec::with_capacity(1024);
 
     for i in 0..10 * 1024 {
         let mut a = [0; 32];
@@ -275,7 +274,7 @@ unsafe fn thread_test_main(_env: Environment) -> i8 {
 
                     42
                 },
-                STACK_SIZE,
+                None,
             )
             .expect("Failed to spawn thread")
         })

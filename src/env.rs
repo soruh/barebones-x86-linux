@@ -1,5 +1,3 @@
-use core::ptr::null;
-
 pub struct Environment {
     args_start: *const *const u8,
     env_start: *const *const u8,
@@ -17,7 +15,7 @@ impl Environment {
     pub unsafe fn calculate_stack_base(&self) -> *mut u8 {
         let mut ptr = self.env_start;
 
-        while *ptr != null() {
+        while !(*ptr).is_null() {
             ptr = ptr.add(1);
         }
 

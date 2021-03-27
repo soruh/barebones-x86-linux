@@ -96,6 +96,7 @@ unsafe fn calc_guard_location(stack_base: *const u8, stack_size: usize) -> *mut 
 
     let stack_end_page = stack_end.sub(PAGESIZE - stack_end.align_offset(PAGESIZE)) as *mut Page;
 
+    #[allow(clippy::let_and_return)]
     let alloc_start = stack_end_page.sub(GUARD_SIZE - 1) as *mut u8;
 
     alloc_start
@@ -151,7 +152,7 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
             let seg_fault_addr = (*signal_info).inner.sig_fault.addr as *mut u8;
 
             if (*signal_info).code.segv() == SegvCode::ACCERR {
-                let tls = *crate::tls::get_tls_ptr().expect("Failed to get tls pointer");
+                let tls = &*crate::tls::get_tls_ptr().expect("Failed to get tls pointer");
 
                 let stack_end = tls.stack_base.sub(tls.stack_limit);
 
@@ -171,8 +172,6 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
                         n_pages_overshot
                     );
                 }
-            } else {
-                trace!("non ACCERR SegFault");
             }
 
             let fault_kind = match (*signal_info).code.segv() {

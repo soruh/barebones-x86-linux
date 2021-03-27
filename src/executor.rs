@@ -214,10 +214,8 @@ pub fn init(n_threads: usize) -> Executor {
             let queue = queue.clone();
             let workers = workers.clone();
 
-            unsafe {
-                thread::spawn(move || worker(i, queue, workers), WORKER_STACK_SIZE)
-                    .expect("Failed to spawn worker thread")
-            }
+            thread::spawn(move || worker(i, queue, workers), Some(WORKER_STACK_SIZE))
+                .expect("Failed to spawn worker thread")
         };
 
         workers.lock().push(Worker { handle, queue });

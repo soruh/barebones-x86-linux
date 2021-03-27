@@ -813,6 +813,12 @@ impl Allocator {
             return;
         }
 
+        if UNALLOCATED_DATA_SENTINEL != 0 {
+            for i in 0..layout.size() {
+                *ptr.add(i) = UNALLOCATED_DATA_SENTINEL;
+            }
+        }
+
         let mut inner = self.lock();
 
         let offset = ptr.offset_from(inner.base as *mut u8);

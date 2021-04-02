@@ -1,7 +1,8 @@
-use crate::{syscalls::*, PAGESIZE};
+use crate::syscalls::*;
 use core::ptr::null;
 use core::ptr::null_mut;
 
+pub const PAGESIZE: usize = 4 * 1024;
 const SIG_STACK_SIZE: usize = 60 * 1024;
 const GUARD_SIZE: usize = 2; // size of the stack guard in pages
 
@@ -156,13 +157,11 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
 
                 let stack_end = tls.stack_base.sub(tls.stack_limit);
 
-                let seg_fault_addr_page = seg_fault_addr.sub(
-                    (crate::PAGESIZE - seg_fault_addr.align_offset(crate::PAGESIZE))
-                        % crate::PAGESIZE,
-                );
+                let seg_fault_addr_page = seg_fault_addr
+                    .sub((PAGESIZE - seg_fault_addr.align_offset(PAGESIZE)) % PAGESIZE);
 
                 let n_pages_overshot =
-                    stack_end.offset_from(seg_fault_addr_page) / crate::PAGESIZE as isize;
+                    stack_end.offset_from(seg_fault_addr_page) / PAGESIZE as isize;
 
                 if (1..=GUARD_SIZE as isize).contains(&n_pages_overshot) {
                     panic!(

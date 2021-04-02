@@ -28,7 +28,7 @@ impl Environment {
 
         // stack top is page aligned
         // TODO: is it actually?
-        max = max.add(max.align_offset(crate::PAGESIZE));
+        max = max.add(max.align_offset(crate::stack_protection::PAGESIZE));
 
         max as *mut _
     }

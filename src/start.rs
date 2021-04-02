@@ -56,14 +56,16 @@ unsafe extern "C" fn _init(n_args: usize, args_start: *const *const u8) -> ! {
 
     crate::stack_protection::setup_segv_handler().expect("Failed to set up segv handler");
 
+    let _: fn(crate::env::Environment) -> i8 = crate::main;
+
     let exit_code = crate::main(env) as i32;
 
     crate::io::cleanup();
 
+    crate::stack_protection::teardown_segv_handler().expect("Failed to tear down segv handler");
+
     crate::stack_protection::teardown_alt_stack()
         .expect("Failed to tear down signal handling stack");
-
-    crate::stack_protection::teardown_segv_handler().expect("Failed to tear down segv handler");
 
     let _ = crate::tls::teardown_tls().expect("Failed to teardown tls");
 

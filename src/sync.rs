@@ -12,11 +12,18 @@ pub struct SpinMutex<T> {
     data: T,
 }
 
+// TODO: look into Orderings here
+
+impl<T> SpinMutex<T> {
+    const LOCKED: bool = true;
+    const UNLOCKED: bool = false;
+}
+
 impl<T: Send + Sync> SpinMutex<T> {
     /// # Safety: needs to be `Pin`ed
     pub unsafe fn new(data: T) -> Self {
         Self {
-            is_locked: false.into(),
+            is_locked: Self::UNLOCKED.into(),
             data,
         }
     }
@@ -26,10 +33,17 @@ impl<T: Send + Sync> SpinMutex<T> {
         // spin until we can take the lock
         while self
             .is_locked
-            .compare_exchange_weak(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .compare_exchange_weak(
+                Self::UNLOCKED,
+                Self::LOCKED,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            )
             .is_err()
         {
-            core::hint::spin_loop();
+            while self.is_locked.load(Ordering::Acquire) == Self::LOCKED {
+                core::hint::spin_loop();
+            }
         }
 
         SpinMutexGuard {
@@ -60,7 +74,7 @@ impl<'d, T> DerefMut for SpinMutexGuard<'d, T> {
 
 impl<'d, T> Drop for SpinMutexGuard<'d, T> {
     fn drop(&mut self) {
-        unsafe { &(*self.mutex).is_locked }.store(false, Ordering::Release);
+        unsafe { &(*self.mutex).is_locked }.store(SpinMutex::<T>::UNLOCKED, Ordering::Release);
     }
 }
 
@@ -81,10 +95,13 @@ unsafe impl<T, const N: usize> Send for FutexMutex<T, N> where T: Send {}
 unsafe impl<T, const N: usize> Sync for FutexMutex<T, N> where T: Sync {}
 
 impl<T, const N: usize> FutexMutex<T, N> {
+    const LOCKED: u32 = 1;
+    const UNLOCKED: u32 = 0;
+
     /// # Safety: must be pinned
     pub const unsafe fn new(data: T) -> Self {
         FutexMutex {
-            is_locked: AtomicU32::new(0),
+            is_locked: AtomicU32::new(Self::UNLOCKED),
             data: UnsafeCell::new(data),
             _needs_pin: core::marker::PhantomPinned,
         }
@@ -98,17 +115,28 @@ impl<T, const N: usize> FutexMutex<T, N> {
         let mutex_var = &self.is_locked as *const AtomicU32;
 
         'outer: loop {
-            for _ in 0..N {
+            let mut i = 0;
+            while i < N {
                 // TODO: at least one of these Orderings can probably be `Aquire`
                 if self
                     .is_locked
-                    .compare_exchange_weak(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+                    .compare_exchange_weak(
+                        Self::UNLOCKED,
+                        Self::LOCKED,
+                        Ordering::Acquire,
+                        Ordering::Relaxed,
+                    )
                     .is_ok()
                 {
                     break 'outer;
                 }
 
-                core::hint::spin_loop();
+                i += 1;
+
+                while i < N && self.is_locked.load(Ordering::Acquire) == Self::LOCKED {
+                    core::hint::spin_loop();
+                    i += 1;
+                }
             }
 
             unsafe {
@@ -121,7 +149,7 @@ impl<T, const N: usize> FutexMutex<T, N> {
             }
 
             // Try to wait on the futex
-            let res = unsafe { futex_wait(mutex_var, 1, None, FutexFlags::empty()) };
+            let res = unsafe { futex_wait(mutex_var, Self::LOCKED, None, FutexFlags::empty()) };
 
             if let Err(err) = res {
                 if err.0 != 11 {
@@ -221,7 +249,7 @@ impl<'d, T> Drop for FutexMutexGuard<'d, T> {
     fn drop(&mut self) {
         unsafe {
             // Unlock lock
-            (&*self.mutex_var).store(0, Ordering::Release);
+            (&*self.mutex_var).store(FutexMutex::<T, 1>::UNLOCKED, Ordering::Release);
 
             // Wake up one waiting thread
             futex_wake(self.mutex_var, Some(1)).expect("Failed to wake futex");

@@ -41,7 +41,7 @@ impl<T: Send + Sync> SpinMutex<T> {
             )
             .is_err()
         {
-            while self.is_locked.load(Ordering::Acquire) == Self::LOCKED {
+            while self.is_locked.load(Ordering::Relaxed) == Self::LOCKED {
                 core::hint::spin_loop();
             }
         }
@@ -133,7 +133,7 @@ impl<T, const N: usize> FutexMutex<T, N> {
 
                 i += 1;
 
-                while i < N && self.is_locked.load(Ordering::Acquire) == Self::LOCKED {
+                while i < N && self.is_locked.load(Ordering::Relaxed) == Self::LOCKED {
                     core::hint::spin_loop();
                     i += 1;
                 }

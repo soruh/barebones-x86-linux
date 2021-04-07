@@ -4,7 +4,7 @@
 
 use crate::io::Fd;
 
-use super::{helper::SyscallResult, SyscallError};
+use super::{helper::*, SyscallError};
 use bitflags::bitflags;
 use core::{hint::unreachable_unchecked, sync::atomic::AtomicU32};
 

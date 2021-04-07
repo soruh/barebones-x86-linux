@@ -1,4 +1,5 @@
 use crate::syscalls::*;
+use crate::{io::*, start::RUNTIME_OPTIONS};
 use core::ptr::null;
 use core::ptr::null_mut;
 
@@ -152,7 +153,7 @@ unsafe extern "C" fn segv_handler(signal: Signal, signal_info: *mut SignalInfo, 
         SignalKind::SEGV => {
             let seg_fault_addr = (*signal_info).inner.sig_fault.addr as *mut u8;
 
-            if (*signal_info).code.segv() == SegvCode::ACCERR {
+            if RUNTIME_OPTIONS.stack_protection && (*signal_info).code.segv() == SegvCode::ACCERR {
                 let tls = &*crate::tls::get_tls_ptr().expect("Failed to get tls pointer");
 
                 let stack_end = tls.stack_base.sub(tls.stack_limit);

@@ -10,6 +10,7 @@ use core::{
 
 use crate::{
     stack_protection::setup_alt_stack,
+    start::RUNTIME_OPTIONS,
     syscalls::{self, futex_wait, munmap},
     tls::{setup_tls, teardown_tls, Tls},
 };
@@ -191,10 +192,12 @@ where
 
         // dbg!(child_stack_allocation);
 
-        crate::stack_protection::create_guard_for_stack(
-            child_stack_allocation.add(allocated_size),
-            allocated_size,
-        )?;
+        if RUNTIME_OPTIONS.stack_protection {
+            crate::stack_protection::create_guard_for_stack(
+                child_stack_allocation.add(allocated_size),
+                allocated_size,
+            )?;
+        }
 
         // This should never actually do anything because mmaped memeory *should* be page aligned
         // TODO: remove once completly certain, that this is the case.
@@ -253,13 +256,17 @@ where
                     let child_stack_allocation = payload.inner.child_stack_allocation;
                     let allocated_size = payload.inner.allocated_size;
 
-                    setup_alt_stack().expect("Failed to set up a signal handling stack");
+                    if RUNTIME_OPTIONS.segv_handling {
+                        setup_alt_stack().expect("Failed to set up a signal handling stack");
+                    }
 
-                    setup_tls(Tls {
-                        stack_base: child_stack_allocation.add(allocated_size),
-                        stack_limit: allocated_size,
-                    })
-                    .expect("Failed to setup tls");
+                    if RUNTIME_OPTIONS.tls {
+                        setup_tls(Tls {
+                            stack_base: child_stack_allocation.add(allocated_size),
+                            stack_limit: allocated_size,
+                        })
+                        .expect("Failed to setup tls");
+                    }
 
                     // Call the provided closure
                     let res = (payload.closure)();
@@ -267,18 +274,24 @@ where
                     // Write result to return value
                     *payload.inner.data.get() = Some(res);
 
-                    teardown_tls().expect("Failed to tear down tls");
+                    if RUNTIME_OPTIONS.tls {
+                        teardown_tls().expect("Failed to tear down tls");
+                    }
 
-                    // Free the stack guard
-                    crate::stack_protection::free_guard_for_stack(
-                        child_stack_allocation.add(allocated_size),
-                        allocated_size,
-                    )
-                    .expect("Failed to free stack guard");
+                    if RUNTIME_OPTIONS.stack_protection {
+                        // Free the stack guard
+                        crate::stack_protection::free_guard_for_stack(
+                            child_stack_allocation.add(allocated_size),
+                            allocated_size,
+                        )
+                        .expect("Failed to free stack guard");
+                    }
 
-                    // free the signal stack
-                    crate::stack_protection::teardown_alt_stack()
-                        .expect("Failed to tear down signal handling stack");
+                    if RUNTIME_OPTIONS.segv_handling {
+                        // free the signal stack
+                        crate::stack_protection::teardown_alt_stack()
+                            .expect("Failed to tear down signal handling stack");
+                    }
 
                     drop(payload.inner);
 
@@ -286,9 +299,10 @@ where
                     // Drop everything on the stack before unmaping it
                 };
 
-                // ATTENTION: We're going to unmap our own stack !
+                // **ATTENTION**: We are going to unmap our own stack!
                 // after this we **must not** touch the stack (or we **will** SegFault)
                 // because of this we're going to do all the syscalls by hand.
+
                 // !!!DANGER PAST THIS POINT!!!
 
                 // munmap our stack
@@ -313,6 +327,7 @@ where
                 asm!("syscall", in("rax") crate::syscalls::raw::SYS_NO_EXIT, in("rdi") 0);
 
                 // exit does not return so we can't get here
+                // and if we did we would SegFault on the `ret`
                 unreachable_unchecked()
             },
             payload_ptr as *mut (),

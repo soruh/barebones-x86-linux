@@ -8,8 +8,8 @@
 //  Arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7
 // ---------------------------------------------------------
 //  x86-64        rdi   rsi   rdx   r10   r8    r9    -
-macro_rules! syscall0 {
-    ($syscall_no: expr) => {{
+pub macro syscall0($syscall_no: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -20,11 +20,11 @@ macro_rules! syscall0 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall1 {
-    ($syscall_no: expr, $arg1: expr) => {{
+pub macro syscall1($syscall_no: expr, $arg1: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -36,11 +36,11 @@ macro_rules! syscall1 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall2 {
-    ($syscall_no: expr, $arg1: expr, $arg2: expr) => {{
+pub macro syscall2($syscall_no: expr, $arg1: expr, $arg2: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -53,11 +53,11 @@ macro_rules! syscall2 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall3 {
-    ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr) => {{
+pub macro syscall3($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -71,11 +71,11 @@ macro_rules! syscall3 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall4 {
-    ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr) => {{
+pub macro syscall4($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -90,11 +90,11 @@ macro_rules! syscall4 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall5 {
-    ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr) => {{
+pub macro syscall5($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -110,11 +110,11 @@ macro_rules! syscall5 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall6 {
-    ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr, $arg6: expr) => {{
+pub macro syscall6($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr, $arg6: expr) {
+    {
         let ret: isize;
 
         asm!(
@@ -131,37 +131,31 @@ macro_rules! syscall6 {
         );
 
         ret
-    }}
+    }
 }
 
-macro_rules! syscall_inner {
+pub macro syscall_inner {
     ($syscall_no: expr) => {
         syscall0!($syscall_no)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr) => {
         syscall1!($syscall_no, $arg1)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr, $arg2: expr) => {
         syscall2!($syscall_no, $arg1, $arg2)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr) => {
         syscall3!($syscall_no, $arg1, $arg2, $arg3)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr) => {
         syscall4!($syscall_no, $arg1, $arg2, $arg3, $arg4)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr) => {
         syscall5!($syscall_no, $arg1, $arg2, $arg3, $arg4, $arg5)
-    };
-
+    },
     ($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $arg4: expr, $arg5: expr, $arg6: expr) => {
         syscall6!($syscall_no, $arg1, $arg2, $arg3, $arg4, $arg5, $arg6)
-    };
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -474,7 +468,7 @@ impl core::fmt::Debug for SyscallError {
     }
 }
 
-macro_rules! syscall {
+pub macro syscall {
     ($syscall_no: expr $(, $arg: expr)*) => {
         {
             let res = syscall_inner!($syscall_no $(, $arg as usize)*);
@@ -485,11 +479,10 @@ macro_rules! syscall {
                 Ok(res as _)
             }
         }
-    };
+    },
     (RAW $syscall_no: expr $(, $arg: expr)*) => {
         {
              syscall_inner!($syscall_no $(, $arg as usize)*)
         }
-    };
-
+    }
 }

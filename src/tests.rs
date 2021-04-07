@@ -1,8 +1,9 @@
-use crate::alloc::{boxed::Box, sync::Arc, vec::Vec};
 use crate::env::Environment;
-use crate::io::stdin;
+use crate::ffi::const_cstr;
+use crate::io::*;
 use crate::sync::Mutex;
 use crate::syscalls::{OpenFlags, OpenMode};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::time::Duration;
 
 pub enum TestFunction {
@@ -26,7 +27,7 @@ pub unsafe fn main(env: Environment, test_function: TestFunction) -> i8 {
 }
 
 // TODO: use cpuid?
-fn ncpu() -> crate::io::Result<usize> {
+fn ncpu() -> crate::io::IoResult<usize> {
     let mut file = crate::fs::File::open(
         const_cstr!("/proc/cpuinfo"),
         OpenFlags::empty(),

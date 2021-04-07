@@ -26,18 +26,18 @@ impl From<Utf8Error> for Error {
     }
 }
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type IoResult<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 
 pub struct Fd(pub u32);
 impl Fd {
-    pub fn write(&self, bytes: &[u8]) -> Result<usize> {
+    pub fn write(&self, bytes: &[u8]) -> IoResult<usize> {
         Ok(crate::syscalls::write(self.0, bytes)?)
     }
 
-    pub fn write_all(&self, bytes: &[u8]) -> Result<usize> {
+    pub fn write_all(&self, bytes: &[u8]) -> IoResult<usize> {
         let mut n_written_total = 0;
         loop {
             let n_written = self.write(&bytes[n_written_total..])?;
@@ -54,11 +54,11 @@ impl Fd {
         }
     }
 
-    pub fn read(&self, dest: &mut [u8]) -> Result<NonZeroUsize> {
+    pub fn read(&self, dest: &mut [u8]) -> IoResult<NonZeroUsize> {
         NonZeroUsize::new(crate::syscalls::read(self.0, dest)?).ok_or(Error::UnexpectedEOF)
     }
 
-    pub fn read_exact(&self, dest: &mut [u8]) -> Result<usize> {
+    pub fn read_exact(&self, dest: &mut [u8]) -> IoResult<usize> {
         let mut n_read_total = 0;
         loop {
             let n_read = self.read(&mut dest[n_read_total..]);
@@ -93,7 +93,8 @@ pub struct StdOut(Mutex<BufferedWriter<STD_OUT_BUFFER_SIZE>>);
 impl StdOut {
     pub const FD: Fd = Fd(1);
 
-    /// # Safety: Self needs to be `Pin`ed in memory
+    /// # Safety
+    /// Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
@@ -104,7 +105,8 @@ pub struct StdErr(Mutex<BufferedWriter<STD_ERR_BUFFER_SIZE>>);
 impl StdErr {
     pub const FD: Fd = Fd(2);
 
-    /// # Safety: Self needs to be `Pin`ed in memory
+    /// # Safety
+    /// Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedWriter::new(Self::FD)))
     }
@@ -115,13 +117,15 @@ pub struct StdIn(Mutex<BufferedReader<STD_IN_BUFFER_SIZE>>);
 impl StdIn {
     pub const FD: Fd = Fd(0);
 
-    /// # Safety: Self needs to be `Pin`ed in memory
+    /// # Safety
+    /// Self needs to be `Pin`ed in memory
     pub const unsafe fn new() -> Self {
         Self(Mutex::new(BufferedReader::new(Self::FD)))
     }
 }
 
-/// # Safety: `Pin`ed, since they are statics
+/// # Safety
+/// `Pin`ed, since they are statics
 pub static STD_OUT: StdOut = unsafe { StdOut::new() };
 pub static STD_ERR: StdErr = unsafe { StdErr::new() };
 pub static STD_IN: StdIn = unsafe { StdIn::new() };
@@ -138,48 +142,48 @@ pub fn stdin() -> FutexMutexGuard<'static, BufferedReader<STD_IN_BUFFER_SIZE>> {
     STD_IN.0.lock()
 }
 
-macro_rules! print {
+pub macro print {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
         use ::core::fmt::Write;
         let mut stdout = $crate::io::stdout();
         write!(stdout, $format, $($arg)*).expect("Failed to write to stdout");
         stdout.flush().expect("Failed to flush stdout");
-    }};
+    }},
 }
 
-macro_rules! println {
+pub macro println {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
         use ::core::fmt::Write;
         write!($crate::io::stdout(), concat!($format, "\n"), $($arg),*).expect("Failed to write to stdout");
-    }};
+    }},
     () => {
         println!("");
-    };
+    }
 }
 
-macro_rules! eprint {
+pub macro eprint {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
         use ::core::fmt::Write;
         let mut stderr = $crate::io::stderr();
         write!(stderr, $format, $($arg)*).expect("Failed to write to stderr");
         stderr.flush().expect("Failed to flush stderr");
-    }};
+    }},
 }
 
-macro_rules! eprintln {
+pub macro eprintln {
     ($format: literal $(, $arg: expr)* $(,)?) => {{
         use ::core::fmt::Write;
         write!($crate::io::stderr(), concat!($format, "\n"), $($arg),*).expect("Failed to write to stderr");
-    }};
+    }},
     () => {
         eprintln!("");
-    };
+    }
 }
 
-macro_rules! dbg {
+pub macro dbg {
     () => {
         debug!("[{}:{}]", file!(), line!());
-    };
+    },
     ($val:expr $(,)?) => {
         // Use of `match` here is intentional because it affects the lifetimes
         // of temporaries - https://stackoverflow.com/a/48732525/1063961
@@ -190,16 +194,16 @@ macro_rules! dbg {
                 tmp
             }
         }
-    };
+    },
     ($($val:expr),+ $(,)?) => {
         ($(dbg!($val)),+,)
-    };
+    }
 }
 
-macro_rules! dbg_p {
+pub macro dbg_p {
     () => {
         debug!("[{}:{}]", file!(), line!());
-    };
+    },
     ($val:expr $(,)?) => {
         // Use of `match` here is intentional because it affects the lifetimes
         // of temporaries - https://stackoverflow.com/a/48732525/1063961
@@ -210,10 +214,10 @@ macro_rules! dbg_p {
                 tmp
             }
         }
-    };
+    },
     ($($val:expr),+ $(,)?) => {
         ($(dbg!($val)),+,)
-    };
+    }
 }
 
 // TODO: make these Ring buffers?
@@ -232,11 +236,11 @@ impl<const BUFFER_SIZE: usize> BufferedReader<BUFFER_SIZE> {
         }
     }
 
-    fn fill_buffer(&mut self) -> Result<NonZeroUsize> {
+    fn fill_buffer(&mut self) -> IoResult<NonZeroUsize> {
         self.fd.read(&mut self.buffer[self.cursor..])
     }
 
-    pub fn read_line(&mut self, line: &mut String) -> Result<()> {
+    pub fn read_line(&mut self, line: &mut String) -> IoResult<()> {
         loop {
             // TODO: checking the byte for \n might cause utf-8 problems
             if let Some((i, _)) = self.buffer[..self.cursor]
@@ -264,7 +268,7 @@ impl<const BUFFER_SIZE: usize> BufferedReader<BUFFER_SIZE> {
     pub fn read_line_inline<const N_INLINE: usize>(
         &mut self,
         line: &mut SmallString<[u8; N_INLINE]>,
-    ) -> Result<()> {
+    ) -> IoResult<()> {
         loop {
             // TODO: checking the byte for \n might cause utf-8 problems
             if let Some((i, _)) = self.buffer[..self.cursor]
@@ -306,7 +310,7 @@ pub struct Lines<'reader, const BUFFER_SIZE: usize> {
 }
 
 impl<const BUFFER_SIZE: usize> Iterator for Lines<'_, BUFFER_SIZE> {
-    type Item = Result<String>;
+    type Item = IoResult<String>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut line = String::new();
@@ -324,7 +328,7 @@ pub struct InlineLines<'reader, const BUFFER_SIZE: usize, const LINE_SIZE: usize
 impl<const BUFFER_SIZE: usize, const LINE_SIZE: usize> Iterator
     for InlineLines<'_, BUFFER_SIZE, LINE_SIZE>
 {
-    type Item = Result<SmallString<[u8; LINE_SIZE]>>;
+    type Item = IoResult<SmallString<[u8; LINE_SIZE]>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut line = SmallString::new();
@@ -356,7 +360,7 @@ impl<const BUFFER_SIZE: usize> BufferedWriter<BUFFER_SIZE> {
         }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> Result<()> {
+    pub fn write(&mut self, data: &[u8]) -> IoResult<()> {
         let new_cursor = self.cursor + data.len();
 
         if new_cursor <= BUFFER_SIZE {
@@ -375,7 +379,7 @@ impl<const BUFFER_SIZE: usize> BufferedWriter<BUFFER_SIZE> {
         Ok(())
     }
 
-    pub fn flush(&mut self) -> Result<usize> {
+    pub fn flush(&mut self) -> IoResult<usize> {
         if self.cursor > 0 {
             let n = self.fd.write_all(&self.buffer[0..self.cursor])?;
 

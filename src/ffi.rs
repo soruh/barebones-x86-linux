@@ -113,13 +113,11 @@ impl<const SIZE: usize> ConstCString<SIZE> {
     }
 }
 
-macro_rules! const_cstr {
-    ($string: literal) => {
-        unsafe {
-            const S: &'static str = concat!($string, "\0");
-            $crate::ffi::ConstCString::<{ S.len() }>::new_unchecked(S)
-        }
-    };
+pub macro const_cstr($string: literal) {
+    unsafe {
+        const S: &'static str = concat!($string, "\0");
+        $crate::ffi::ConstCString::<{ S.len() }>::new_unchecked(S)
+    }
 }
 
 impl<const SIZE: usize> ConstCString<SIZE> {

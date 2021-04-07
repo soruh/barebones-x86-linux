@@ -1,3 +1,4 @@
+use crate::io::*;
 use log::Log;
 
 pub fn init<const VERBOSE: bool>(level: log::LevelFilter) -> Result<(), log::SetLoggerError> {

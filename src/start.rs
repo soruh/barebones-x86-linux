@@ -111,7 +111,8 @@ impl RuntimeOptions {
 pub static mut RUNTIME_OPTIONS: RuntimeOptions = RuntimeOptions::all();
 
 /// creates the program entry point which sets up the program runtime
-/// optionally takes a `RuntimeOptions` to selectively en-/disable runtime features
+/// optionally takes a `RuntimeOptions` to selectively en-/disable runtime
+/// features
 pub macro create_init {
     ($main: path) => {
         create_init!($main, $crate::start::RuntimeOptions::all());

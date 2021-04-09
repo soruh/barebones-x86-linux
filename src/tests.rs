@@ -1,8 +1,10 @@
-use crate::env::Environment;
-use crate::ffi::const_cstr;
-use crate::io::*;
-use crate::sync::Mutex;
-use crate::syscalls::{OpenFlags, OpenMode};
+use crate::{
+    env::Environment,
+    ffi::const_cstr,
+    io::*,
+    sync::Mutex,
+    syscalls::{OpenFlags, OpenMode},
+};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::time::Duration;
 
@@ -141,7 +143,8 @@ unsafe fn alloc_test_main(_env: Environment) -> i8 {
 
     let mut v = Vec::with_capacity(1024);
 
-    // Test that allocating and dropping values in a loop does not repeatedly allocate new blocks
+    // Test that allocating and dropping values in a loop does not repeatedly
+    // allocate new blocks
     for i in 0..1024 {
         let a: Box<u32> = Box::new(42);
         let mut b: Box<u32> = Box::new(37);

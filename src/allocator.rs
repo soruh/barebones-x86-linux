@@ -1,5 +1,4 @@
-use crate::syscalls;
-use crate::{sync::*, syscalls::*};
+use crate::{sync::*, syscalls, syscalls::*};
 use core::{
     alloc::{GlobalAlloc, Layout},
     isize,
@@ -106,7 +105,8 @@ impl Block {
 
         let res = self.0[byte] & (1 << offset);
 
-        // trace!("[{:5}]: {} - {} | {:#010b} => {}", j, byte, offset, self.0[byte], (res != 0) as u8);
+        // trace!("[{:5}]: {} - {} | {:#010b} => {}", j, byte, offset, self.0[byte],
+        // (res != 0) as u8);
 
         res == 0
     }
@@ -117,7 +117,8 @@ impl Block {
         let byte = i / 8;
         let offset = i % 8;
 
-        // trace!("[{:5}]: {} - {} | {} => {:#010b}", j, byte, offset, (!val) as u8, self.0[byte]);
+        // trace!("[{:5}]: {} - {} | {} => {:#010b}", j, byte, offset, (!val) as u8,
+        // self.0[byte]);
 
         if val {
             self.0[byte] &= !(1 << offset);
@@ -125,7 +126,8 @@ impl Block {
             self.0[byte] |= 1 << offset;
         }
 
-        // trace!("[{:5}]: {} - {} |   => {:#010b}", j, byte, offset, self.0[byte]);
+        // trace!("[{:5}]: {} - {} |   => {:#010b}", j, byte, offset,
+        // self.0[byte]);
     }
 
     #[inline]
@@ -154,7 +156,8 @@ impl Block {
         let byte = self.chunk_size() + j / 8;
         let offset = j % 8;
 
-        // trace!("[{:5}]: {} - {} | {} => {:#010b}", j, byte, offset, (!val) as u8, self.0[byte]);
+        // trace!("[{:5}]: {} - {} | {} => {:#010b}", j, byte, offset, (!val) as u8,
+        // self.0[byte]);
 
         if val {
             self.0[byte] &= !(1 << offset);
@@ -168,7 +171,8 @@ impl Block {
             self.0[byte] |= 1 << offset;
         }
 
-        // trace!("[{:5}]: {} - {} |   => {:#010b}", j, byte, offset, self.0[byte]);
+        // trace!("[{:5}]: {} - {} |   => {:#010b}", j, byte, offset,
+        // self.0[byte]);
     }
 
     fn alloc(&mut self, size: usize) -> Option<usize> {

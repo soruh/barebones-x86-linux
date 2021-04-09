@@ -154,7 +154,8 @@ impl<T: Send + Sync> JoinHandle<T> {
     }
 }
 
-/// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will be leaked
+/// NOTE: if the thread panics after the `JoinHandle` is dropped it's stack will
+/// be leaked
 #[inline(never)]
 pub fn spawn<T, F>(f: F, stack_size: Option<usize>) -> SyscallResult<JoinHandle<T>>
 where
@@ -164,19 +165,21 @@ where
     unsafe {
         let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
 
-        // This should be the same as we use with the main stack  %rsp & 0xfffffffffffffff0
-        // TODO: if we randomly SegFault increase this :))
+        // This should be the same as we use with the main stack  %rsp &
+        // 0xfffffffffffffff0 TODO: if we randomly SegFault increase this :))
         const ALIGN: usize = 16;
 
         // make sure the top of the stack is aligned
-        // we need to allocate at most 2*ALIGN more, because we need to adjust both top top and the bottom of the stack
-        // to ensure there are at least `stack_size` of aligned stack available
+        // we need to allocate at most 2*ALIGN more, because we need to adjust both top
+        // top and the bottom of the stack to ensure there are at least
+        // `stack_size` of aligned stack available
         let allocated_size = stack_size + ALIGN;
 
         // make sure the stack is an aligned number of bytes so it's top is aligne
-        // we are basically calculating by how much the current size is misaligned (allocated_size % ALIGN)
-        // and then adjust the size up by ALIGN- that ammount to make it aligned, but if
-        // allocated_size % ALIGN == 0 we don't add anything ((ALIGN - 0) % ALIGN == 0)
+        // we are basically calculating by how much the current size is misaligned
+        // (allocated_size % ALIGN) and then adjust the size up by ALIGN- that
+        // ammount to make it aligned, but if allocated_size % ALIGN == 0 we
+        // don't add anything ((ALIGN - 0) % ALIGN == 0)
         let stack_size = allocated_size + (ALIGN - allocated_size % ALIGN) % ALIGN;
 
         use syscalls::{MMapFlags, MProt};
@@ -199,12 +202,14 @@ where
             )?;
         }
 
-        // This should never actually do anything because mmaped memeory *should* be page aligned
-        // TODO: remove once completly certain, that this is the case.
+        // This should never actually do anything because mmaped memeory *should* be
+        // page aligned TODO: remove once completly certain, that this is the
+        // case.
         let child_stack = child_stack_allocation.add(child_stack_allocation.align_offset(ALIGN));
 
         let inner = Arc::pin(JoinHandleInner {
-            /// # Safety: the Mutex is always pinned inside of `JoinHandleInner`s containing Arc
+            /// # Safety: the Mutex is always pinned inside of
+            /// `JoinHandleInner`s containing Arc
             data: ManuallyDrop::new(UnsafeCell::new(None)),
             child_stack_allocation,
             allocated_size,
@@ -214,12 +219,15 @@ where
             _pinned: PhantomPinned,
         });
 
-        // TODO: find out why if we don't do this the memory of the `JoinHandleInner` sometimes stays uninitialized
+        // TODO: find out why if we don't do this the memory of the `JoinHandleInner`
+        // sometimes stays uninitialized
         core::mem::forget(core::ptr::read_volatile(&*inner));
 
-        // Safety: this is okay, since `inner.child_tid_futex` which we are creating a reference to is
+        // Safety: this is okay, since `inner.child_tid_futex` which we are creating a
+        // reference to is
         // - atomic
-        // - Pinned in memory and will live long enought due to it being inside of an `Arc::pin`
+        // - Pinned in memory and will live long enought due to it being inside of an
+        //   `Arc::pin`
         let child_tid_futex = inner.child_tid_futex as *mut u32;
 
         // dbg!(child_tid_futex);
@@ -230,9 +238,10 @@ where
         // dbg!(child_tid_futex);
         // asm!("int3");
 
-        // We create a payload on the Heap so that we don't rely on any data on the stack after the clone
-        // If we didn't to this we would just read uninitialized memory from the `child_stack`
-        // We pass the pointer to this heap allocation via `r12` since it's not used by syscalls
+        // We create a payload on the Heap so that we don't rely on any data on the
+        // stack after the clone If we didn't to this we would just read
+        // uninitialized memory from the `child_stack` We pass the pointer to
+        // this heap allocation via `r12` since it's not used by syscalls
         // neither by parameters nor clobbers
 
         struct Payload<T, F> {
@@ -354,8 +363,8 @@ where
             },
         )?;
 
-        // TODO: this line previously caused pointers in the child stack to be overwritten
-        //       figure out if it still does and why => fix
+        // TODO: this line previously caused pointers in the child stack to be
+        // overwritten       figure out if it still does and why => fix
 
         // dbg!(child_tid);
 

@@ -1,8 +1,10 @@
 use core::ops::{Deref, DerefMut};
 
-use crate::io::{BufferedWriter, Fd};
-use crate::syscalls::{self, OpenFlags, OpenMode, SyscallResult};
-use crate::{ffi::CStr, io::BufferedReader};
+use crate::{
+    ffi::CStr,
+    io::{BufferedReader, BufferedWriter, Fd},
+    syscalls::{self, OpenFlags, OpenMode, SyscallResult},
+};
 
 pub struct File {
     fd: Fd,

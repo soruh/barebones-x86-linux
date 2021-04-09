@@ -22,8 +22,9 @@ impl Environment {
         // end of env
         let end_of_env = ptr;
 
-        // Note: we currently assume that the environment variables are in memory sequentially
-        // TODO: this is probably not guaranteed (but "it werks on my machine")
+        // Note: we currently assume that the environment variables are in memory
+        // sequentially TODO: this is probably not guaranteed (but "it werks on
+        // my machine")
         let mut max = *end_of_env.sub(1);
 
         // stack top is page aligned

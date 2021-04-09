@@ -504,7 +504,8 @@ pub struct _SignalInfo {
     /// Signal code
     pub code: i32,
 
-    /// Trap number that caused hardware-generated signal (unused on most architectures)
+    /// Trap number that caused hardware-generated signal (unused on most
+    /// architectures)
     pub trapno: i32,
 
     /// Sending process ID
@@ -703,9 +704,9 @@ pub enum PrctlCode {
     GET_GS = 0x1004,
     GET_CPUID = 0x1011,
     SET_CPUID = 0x1012,
-    // MAP_VDSO_X32 = 0x2001,
-    // MAP_VDSO_32 = 0x2002,
-    // MAP_VDSO_64 = 0x2003,
+    /* MAP_VDSO_X32 = 0x2001,
+     * MAP_VDSO_32 = 0x2002,
+     * MAP_VDSO_64 = 0x2003, */
 }
 
 #[inline(always)]

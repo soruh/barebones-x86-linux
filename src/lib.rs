@@ -11,10 +11,8 @@
 #![feature(const_mut_refs)]
 #![allow(unused_macros, dead_code)]
 
-#[macro_use]
-extern crate alloc;
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate alloc;
+#[macro_use] extern crate log;
 extern crate compiler_builtins;
 
 pub mod start;

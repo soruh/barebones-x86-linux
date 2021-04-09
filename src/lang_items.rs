@@ -1,5 +1,4 @@
-use crate::io::stderr;
-use crate::syscalls::exit;
+use crate::{io::stderr, syscalls::exit};
 
 #[panic_handler]
 #[allow(const_item_mutation)]

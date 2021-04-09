@@ -115,6 +115,7 @@ pub unsafe fn futex_wake(uaddr: FutexVar, n: Option<u32>) -> SyscallResult<u64> 
 }
 
 /// # Safety:
+//
 // - r12 needs to contain a f: `unsafe fn(*mut ()) -> !`
 // - r13 needs to contain a user_data: *mut () that is valid as an argument to f
 // - realigns the stack
@@ -149,8 +150,9 @@ unsafe extern "C" fn clone_proxy() -> isize {
     )
 }
 
-/// sets the supplied stack up so that the clone will call `f` with the supplied `user_data`
-/// and then executes the clone3 syscall with the supplied `clone_args`.
+/// sets the supplied stack up so that the clone will call `f` with the supplied
+/// `user_data` and then executes the clone3 syscall with the supplied
+/// `clone_args`.
 ///
 /// # Safety:
 /// - CloneArgs::VM must be set

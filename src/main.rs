@@ -6,8 +6,7 @@
 
 use barebones_x86_linux::*;
 
-#[macro_use]
-extern crate log;
+#[macro_use] extern crate log;
 
 extern crate alloc;
 

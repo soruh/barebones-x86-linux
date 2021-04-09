@@ -1,7 +1,5 @@
-use crate::syscalls::*;
-use crate::{io::*, start::RUNTIME_OPTIONS};
-use core::ptr::null;
-use core::ptr::null_mut;
+use crate::{io::*, start::RUNTIME_OPTIONS, syscalls::*};
+use core::ptr::{null, null_mut};
 
 pub const PAGESIZE: usize = 4 * 1024;
 const SIG_STACK_SIZE: usize = 60 * 1024;

@@ -17,6 +17,7 @@ pub macro syscall0($syscall_no: expr) {
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -33,6 +34,7 @@ pub macro syscall1($syscall_no: expr, $arg1: expr) {
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -50,6 +52,7 @@ pub macro syscall2($syscall_no: expr, $arg1: expr, $arg2: expr) {
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -68,6 +71,7 @@ pub macro syscall3($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr) {
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -87,6 +91,7 @@ pub macro syscall4($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $ar
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -107,6 +112,7 @@ pub macro syscall5($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $ar
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -128,6 +134,7 @@ pub macro syscall6($syscall_no: expr, $arg1: expr, $arg2: expr, $arg3: expr, $ar
             inlateout("rax") $syscall_no => ret,
             lateout("rcx") _,
             lateout("r11") _,
+            options(nostack),
         );
 
         ret
@@ -473,7 +480,9 @@ pub macro syscall {
         {
             let res = syscall_inner!($syscall_no $(, $arg as usize)*);
 
-            if res < 0 {
+            // A value in the range between `-4095` and `-1` indicates an error,it is `-errno`.
+            // from https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (page 124)
+            if (-4095..=-1).contains(&res) {
                 Err($crate::syscalls::helper::SyscallError((-res) as u32))
             } else {
                 Ok(res as _)

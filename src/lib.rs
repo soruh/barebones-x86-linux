@@ -10,6 +10,7 @@
 #![feature(array_methods)]
 #![feature(const_mut_refs)]
 #![allow(unused_macros, dead_code)]
+#![allow(clippy::missing_safety_doc)]
 
 #[macro_use] extern crate alloc;
 #[macro_use] extern crate log;

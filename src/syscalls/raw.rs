@@ -6,7 +6,7 @@ use crate::io::Fd;
 
 use super::{helper::*, SyscallError};
 use bitflags::bitflags;
-use core::{hint::unreachable_unchecked, sync::atomic::AtomicU32};
+use core::{hint::unreachable_unchecked, ptr::null, sync::atomic::AtomicU32};
 
 pub const SYS_NO_READ: usize = 0;
 pub const SYS_NO_WRITE: usize = 1;
@@ -320,7 +320,7 @@ impl Default for SignalHandler {
 
 impl SignalHandler {
     pub fn default_handler() -> Self {
-        Self(0 as *const ())
+        Self(null())
     }
     pub fn ignore() -> Self {
         Self(1 as *const ())

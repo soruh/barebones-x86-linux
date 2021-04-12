@@ -3,6 +3,7 @@
 #![feature(asm)]
 #![feature(naked_functions)]
 #![feature(link_args)]
+#![allow(clippy::missing_safety_doc)]
 
 use barebones_x86_linux::*;
 
@@ -15,5 +16,5 @@ pub mod tests;
 create_init!(main);
 
 fn main(env: env::Environment) -> i8 {
-    unsafe { tests::main(env, tests::TestFunction::StackOverflow) }
+    unsafe { tests::main(env, tests::TestFunction::ThreadingAndMutex) }
 }

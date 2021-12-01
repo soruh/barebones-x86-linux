@@ -118,11 +118,6 @@ pub macro create_init {
         create_init!($main, $crate::start::RuntimeOptions::all());
     },
     ($main: path, $opts: expr) => {
-        // link this binary without any startfiles
-        #[allow(unused_attributes)]
-        #[link_args = "-nostartfiles"]
-        extern "C" {}
-
         /// The program entry point
         /// # Safety
         /// should **never** be called manually

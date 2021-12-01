@@ -132,7 +132,6 @@ unsafe extern "C" fn clone_callback() -> ! {
     f(user_data)
 }
 
-#[inline(never)]
 #[naked]
 /// # Safety: arguments to clone3 are expected to already be in rdi and rsi
 // NOTE:

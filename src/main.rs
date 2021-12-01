@@ -1,12 +1,13 @@
 #![no_std]
 #![no_main]
-#![feature(asm)]
+#![feature(asm, asm_sym, asm_const)]
 #![feature(naked_functions)]
-#![feature(link_args)]
+#![allow(clippy::missing_safety_doc)]
 
 use barebones_x86_linux::*;
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
 extern crate alloc;
 

@@ -6,7 +6,7 @@ use crate::{
     syscalls::{OpenFlags, OpenMode},
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::time::Duration;
+use core::{time::Duration, arch::asm};
 
 pub enum TestFunction {
     Alloc,

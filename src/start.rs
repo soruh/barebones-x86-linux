@@ -125,7 +125,7 @@ pub macro create_init {
         #[naked]
         unsafe extern "C" fn _start() -> ! {
             // C call: rdi, rsi, rdx, rcx, r8, r9
-            asm!(
+            ::core::arch::asm!(
                 "endbr64",
 
                 // clear base pointer

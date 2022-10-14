@@ -1,3 +1,4 @@
+use core::arch::asm;
 use crate::{io::stderr, syscalls::exit};
 
 #[panic_handler]

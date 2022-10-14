@@ -1,5 +1,7 @@
 #![allow(clippy::upper_case_acronyms)]
 
+use core::arch::asm;
+
 // Arch/ABI    Instruction           System  Ret  Ret  Error
 //                                   call #  val  val2
 // ---------------------------------------------------------

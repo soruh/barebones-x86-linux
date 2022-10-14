@@ -6,6 +6,7 @@ use core::{
     pin::Pin,
     ptr::null_mut,
     sync::atomic::{AtomicU32, Ordering},
+    arch::asm,
 };
 
 use crate::{

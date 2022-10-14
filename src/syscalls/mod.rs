@@ -1,7 +1,7 @@
 #[macro_use]
 pub mod helper;
 pub mod raw;
-use core::{ptr::null_mut, sync::atomic::AtomicU32};
+use core::{ptr::null_mut, sync::atomic::AtomicU32, arch::asm};
 
 pub use raw::*;
 
